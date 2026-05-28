@@ -43,7 +43,10 @@ object TcpClient {
             while (isRunning) {
                 val cmd = inputStream?.readUTF() ?: break
                 Log.d("TcpClient", "Comando recebido: $cmd")
-                _command.value = cmd
+                // IGNORAR o PING para não sobrescrever o estado da UI atual
+                if (cmd != "CMD_PING") {
+                    _command.value = cmd
+                }
 
                 if (cmd == "CMD_EXIBIR_PIX" || cmd == "CMD_EXIBIR_MEU_PIX" || cmd == "CMD_EXIBIR_WIFI") {
                     onExibirPixCallback?.invoke(cmd)
