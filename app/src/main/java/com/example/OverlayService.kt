@@ -1,5 +1,6 @@
 package com.example
 
+import android.util.Log
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.view.accessibility.AccessibilityEvent
@@ -96,22 +97,20 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
 
     private var isViewAdded = false
     private lateinit var windowParams: WindowManager.LayoutParams
+    private var isLifecycleInitialized = false
 
-    override fun onServiceConnected() {
-        super.onServiceConnected()
-        savedStateRegistryController.performRestore(null)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-
-        scope.launch {
-            val prefs = getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
-            val portString = prefs.getString("PORT", "8080") ?: "8080"
-            val port = portString.toIntOrNull() ?: 8080
-            TcpServer.startServer(port)
-        }
-        scope.launch {
-            com.example.network.UdpDiscovery.startDiscoveryServer()
+    override fun onCreate() {
+        super.onCreate()
+        if (!isLifecycleInitialized) {
+            try {
+                savedStateRegistryController.performRestore(null)
+                lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+                lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+                lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+            } catch (e: Exception) {
+                Log.e("OverlayService", "Erro ao inicializar ciclo de vida: ${e.message}")
+            }
+            isLifecycleInitialized = true
         }
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -127,56 +126,20 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             x = 100
             y = 100
         }
+    }
 
-        composeView = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            setContent {
-                val connectedClientsList by TcpServer.connectedClients.collectAsState()
-                MyApplicationTheme {
-                    OverlayWidget(
-                        connectedClients = connectedClientsList.size,
-                        onClose = { hideBubble() },
-                        onDrag = { dx, dy ->
-                            windowParams.x = (windowParams.x + dx).toInt()
-                            windowParams.y = (windowParams.y + dy).toInt()
-                            if (isViewAdded) windowManager.updateViewLayout(composeView, windowParams)
-                        },
-                        onCapture = { 
-                            captureScreenAndSend()
-                        },
-                        onLimparTela = {
-                            scope.launch {
-                                TcpServer.sendCommand("CMD_LIMPAR_TELA")
-                            }
-                        },
-                        onApagarTela = {
-                            scope.launch {
-                                TcpServer.sendCommand("CMD_APAGAR_TELA")
-                            }
-                        },
-                        onExpandedChanged = {
-                            if (isViewAdded) windowManager.updateViewLayout(composeView, windowParams)
-                        },
-                        onEnviarMeuPix = {
-                            scope.launch {
-                                val pixPayload = "00020101021126360014br.gov.bcb.pix0114+55879815049025204000053039865802BR5919Alex Lopes da Silva6011GaranhunsPE62070503***6304539E"
-                                TcpServer.sendCommandAndText("CMD_EXIBIR_MEU_PIX", pixPayload)
-                            }
-                        },
-                        onEnviarMeuWifi = {
-                            scope.launch {
-                                val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
-                                TcpServer.sendCommandAndText("CMD_EXIBIR_WIFI", wifiPayload)
-                            }
-                        }
-                    )
-                }
-            }
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+
+        scope.launch {
+            val prefs = getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
+            val portString = prefs.getString("PORT", "8080") ?: "8080"
+            val port = portString.toIntOrNull() ?: 8080
+            TcpServer.startServer(port)
         }
-
-        composeView.setViewTreeLifecycleOwner(this)
-        composeView.setViewTreeViewModelStoreOwner(this)
-        composeView.setViewTreeSavedStateRegistryOwner(this)
+        scope.launch {
+            com.example.network.UdpDiscovery.startDiscoveryServer()
+        }
 
         scope.launch {
             TcpServer.isServerRunningState.collect { isRunning ->
@@ -199,18 +162,109 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         return super.onStartCommand(intent, flags, startId)
     }
 
+    private fun createComposeView(): ComposeView {
+        val view = ComposeView(this)
+        view.apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                val connectedClientsList by TcpServer.connectedClients.collectAsState()
+                MyApplicationTheme {
+                    OverlayWidget(
+                        connectedClients = connectedClientsList.size,
+                        onClose = { hideBubble() },
+                        onDrag = { dx, dy ->
+                            windowParams.x = (windowParams.x + dx).toInt()
+                            windowParams.y = (windowParams.y + dy).toInt()
+                            if (isViewAdded) {
+                                try {
+                                    windowManager.updateViewLayout(view, windowParams)
+                                } catch (e: Exception) {
+                                    Log.e("OverlayService", "Erro no arrasto: ${e.message}")
+                                }
+                            }
+                        },
+                        onCapture = { 
+                            captureScreenAndSend()
+                        },
+                        onLimparTela = {
+                            scope.launch {
+                                TcpServer.sendCommand("CMD_LIMPAR_TELA")
+                            }
+                        },
+                        onApagarTela = {
+                            scope.launch {
+                                TcpServer.sendCommand("CMD_APAGAR_TELA")
+                            }
+                        },
+                        onExpandedChanged = {
+                            if (isViewAdded) {
+                                try {
+                                    windowManager.updateViewLayout(view, windowParams)
+                                } catch (e: Exception) {
+                                    Log.e("OverlayService", "Erro ao atualizar layout: ${e.message}")
+                                }
+                            }
+                        },
+                        onEnviarMeuPix = {
+                            scope.launch {
+                                val pixPayload = "00020101021126360014br.gov.bcb.pix0114+55879815049025204000053039865802BR5919Alex Lopes da Silva6011GaranhunsPE62070503***6304539E"
+                                TcpServer.sendCommandAndText("CMD_EXIBIR_MEU_PIX", pixPayload)
+                            }
+                        },
+                        onEnviarMeuWifi = {
+                            scope.launch {
+                                val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
+                                TcpServer.sendCommandAndText("CMD_EXIBIR_WIFI", wifiPayload)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+        view.setViewTreeLifecycleOwner(this)
+        view.setViewTreeViewModelStoreOwner(this)
+        view.setViewTreeSavedStateRegistryOwner(this)
+        return view
+    }
+
     private fun showBubble() {
-        if (::composeView.isInitialized && !isViewAdded) {
+        if (isViewAdded && ::composeView.isInitialized) {
+            hideBubble()
+        }
+
+        composeView = createComposeView()
+
+        try {
             windowManager.addView(composeView, windowParams)
             isViewAdded = true
+        } catch (e: Exception) {
+            Log.e("OverlayService", "Erro ao exibir bolha: ${e.message}")
+            isViewAdded = false
         }
     }
 
     private fun hideBubble() {
         if (::composeView.isInitialized && isViewAdded) {
-            windowManager.removeView(composeView)
-            isViewAdded = false
+            try {
+                windowManager.removeViewImmediate(composeView)
+            } catch (e: Exception) {
+                Log.e("OverlayService", "Erro ao ocultar bolha: ${e.message}")
+            } finally {
+                isViewAdded = false
+            }
         }
+        if (::composeView.isInitialized) {
+            try {
+                composeView.disposeComposition()
+            } catch (e: Exception) {
+                Log.e("OverlayService", "Erro ao descartar composicao: ${e.message}")
+            }
+        }
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        hideBubble()
+        return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
@@ -227,12 +281,25 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             scope.launch {
                 withContext(Dispatchers.Main) {
-                    composeView.visibility = android.view.View.INVISIBLE
+                    if (::composeView.isInitialized) {
+                        composeView.visibility = android.view.View.INVISIBLE
+                    }
                 }
+
+                // Timeout de 3 segundos para restaurar visibilidade se takeScreenshot falhar silenciosamente
+                val timeoutJob = scope.launch(Dispatchers.Main) {
+                    delay(3000)
+                    if (::composeView.isInitialized && composeView.visibility == android.view.View.INVISIBLE) {
+                        composeView.visibility = android.view.View.VISIBLE
+                        Toast.makeText(this@OverlayService, "Tempo limite de captura excedido.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
                 delay(200)
 
                 takeScreenshot(android.view.Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
                     override fun onSuccess(screenshotResult: AccessibilityService.ScreenshotResult) {
+                        timeoutJob.cancel()
                         try {
                             val hardwareBuffer = screenshotResult.hardwareBuffer
                             val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshotResult.colorSpace)
@@ -266,7 +333,9 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                 if (qrText != null) {
                                     scope.launch {
                                         withContext(Dispatchers.Main) {
-                                            composeView.visibility = android.view.View.VISIBLE
+                                            if (::composeView.isInitialized) {
+                                                composeView.visibility = android.view.View.VISIBLE
+                                            }
                                             Toast.makeText(this@OverlayService, "QR Code extraído e enviado!", Toast.LENGTH_SHORT).show()
                                         }
                                         withContext(Dispatchers.IO) {
@@ -275,7 +344,9 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                     }
                                 } else {
                                     scope.launch(Dispatchers.Main) {
-                                        composeView.visibility = android.view.View.VISIBLE
+                                        if (::composeView.isInitialized) {
+                                            composeView.visibility = android.view.View.VISIBLE
+                                        }
                                         Toast.makeText(this@OverlayService, "Nenhum QR Code encontrado na tela.", Toast.LENGTH_SHORT).show()
                                     }
                                 }
@@ -289,6 +360,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                     }
 
                     override fun onFailure(errorCode: Int) {
+                        timeoutJob.cancel()
                         restoreViewAndShowError()
                     }
                 })
@@ -300,7 +372,9 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
 
     private fun restoreViewAndShowError() {
         scope.launch(Dispatchers.Main) {
-            composeView.visibility = android.view.View.VISIBLE
+            if (::composeView.isInitialized) {
+                composeView.visibility = android.view.View.VISIBLE
+            }
             Toast.makeText(this@OverlayService, "Falha na captura.", Toast.LENGTH_SHORT).show()
         }
     }
