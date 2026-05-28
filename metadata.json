@@ -1,0 +1,6 @@
+{
+  "name": "Pix no Banco de Trás",
+  "description": "App para exibir pagamentos Pix remotamente.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

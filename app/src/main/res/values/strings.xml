@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Pix Banco Trás</string>
+    <string name="accessibility_service_description">Serviço necessário para capturar a tela sem usar MediaProjection.</string>
+</resources>
