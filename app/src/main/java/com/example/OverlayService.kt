@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.PhonelinkErase
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -194,6 +196,17 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                         onApagarTela = {
                             scope.launch {
                                 TcpServer.sendCommand("CMD_APAGAR_TELA")
+                            }
+                        },
+                        onEnviarBemVindo = {
+                            scope.launch {
+                                val wifiPayload = "WIFI:S:AL'X;T:WPA;P:qwertyuiop;H:false;;"
+                                TcpServer.sendCommandAndText("CMD_EXIBIR_BEM_VINDO", wifiPayload)
+                            }
+                        },
+                        onEnviarObrigado = {
+                            scope.launch {
+                                TcpServer.sendCommandAndText("CMD_EXIBIR_OBRIGADO", "")
                             }
                         },
                         onExpandedChanged = {
@@ -390,7 +403,9 @@ fun OverlayWidget(
     onApagarTela: () -> Unit,
     onExpandedChanged: (Boolean) -> Unit,
     onEnviarMeuPix: () -> Unit = {},
-    onEnviarMeuWifi: () -> Unit = {}
+    onEnviarMeuWifi: () -> Unit = {},
+    onEnviarBemVindo: () -> Unit = {},
+    onEnviarObrigado: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
     
@@ -481,6 +496,28 @@ fun OverlayWidget(
                         label = "Wi-Fi",
                         tint = Color(0xFFBA68C8),
                         onClick = { expanded = false; onExpandedChanged(false); onEnviarMeuWifi() }
+                    )
+                }
+                
+                // Divisor Horizontal
+                Box(modifier = Modifier.size(140.dp, 1.dp).background(Color.Gray.copy(alpha = 0.5f)))
+                
+                // Linha do Meio
+                Row(
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MenuActionButton(
+                        icon = Icons.Default.DirectionsCar,
+                        label = "Bem-Vindo",
+                        tint = Color(0xFF4DD0E1),
+                        onClick = { expanded = false; onExpandedChanged(false); onEnviarBemVindo() }
+                    )
+                    MenuActionButton(
+                        icon = Icons.Default.Favorite,
+                        label = "Obrigado",
+                        tint = Color(0xFFF06292),
+                        onClick = { expanded = false; onExpandedChanged(false); onEnviarObrigado() }
                     )
                 }
                 

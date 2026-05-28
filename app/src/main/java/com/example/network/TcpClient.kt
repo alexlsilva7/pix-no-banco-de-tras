@@ -48,7 +48,7 @@ object TcpClient {
                     _command.value = cmd
                 }
 
-                if (cmd == "CMD_EXIBIR_PIX" || cmd == "CMD_EXIBIR_MEU_PIX" || cmd == "CMD_EXIBIR_WIFI") {
+                if (cmd == "CMD_EXIBIR_PIX" || cmd == "CMD_EXIBIR_MEU_PIX" || cmd == "CMD_EXIBIR_WIFI" || cmd == "CMD_EXIBIR_BEM_VINDO" || cmd == "CMD_EXIBIR_OBRIGADO") {
                     onExibirPixCallback?.invoke(cmd)
                     val qrText = inputStream?.readUTF() ?: ""
                     if (qrText.isNotEmpty()) {

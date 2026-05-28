@@ -76,7 +76,7 @@ class PixActivity : ComponentActivity() {
         }
         setContent {
             MyApplicationTheme {
-                PixScreen()
+                PassengerScreen()
             }
         }
     }
@@ -88,47 +88,5 @@ class PixActivity : ComponentActivity() {
         }
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         notificationManager.cancel(1001)
-    }
-}
-
-@Composable
-fun PixScreen() {
-    val qrCodeText by TcpClient.qrCodeText.collectAsState()
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        val currentText = qrCodeText
-        if (currentText != null) {
-            val qrBitmap = remember(currentText) {
-                try {
-                    val writer = com.google.zxing.qrcode.QRCodeWriter()
-                    val bitMatrix = writer.encode(currentText, com.google.zxing.BarcodeFormat.QR_CODE, 512, 512)
-                    val width = bitMatrix.width
-                    val height = bitMatrix.height
-                    val bmp = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
-                    for (x in 0 until width) {
-                        for (y in 0 until height) {
-                            bmp.setPixel(x, y, if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
-                        }
-                    }
-                    bmp
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    null
-                }
-            }
-            if (qrBitmap != null) {
-                Image(
-                    bitmap = qrBitmap.asImageBitmap(),
-                    contentDescription = "QR Code Pix",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
-            }
-        }
     }
 }

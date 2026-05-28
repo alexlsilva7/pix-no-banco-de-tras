@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Star
 import com.example.network.TcpServer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
@@ -113,7 +115,7 @@ class MainActivity : ComponentActivity() {
         )
         wakeLock.acquire(5000)
         
-        if (cmd == "CMD_EXIBIR_PIX") {
+        if (cmd == "CMD_EXIBIR_PIX" || cmd == "CMD_EXIBIR_MEU_PIX" || cmd == "CMD_EXIBIR_WIFI" || cmd == "CMD_EXIBIR_BEM_VINDO" || cmd == "CMD_EXIBIR_OBRIGADO") {
             val intent = android.content.Intent(this, PixActivity::class.java).apply {
                 addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
@@ -844,7 +846,48 @@ fun PassengerScreen() {
                             }
                         }
                         
-                        if (command == "CMD_EXIBIR_MEU_PIX" || command == "CMD_EXIBIR_WIFI") {
+                        if (command == "CMD_EXIBIR_OBRIGADO") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.foundation.layout.Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = "Obrigado",
+                                        tint = Color(0xFFF06292),
+                                        modifier = Modifier.size(160.dp)
+                                    )
+                                    Text(
+                                        "Obrigado por viajar comigo!",
+                                        style = MaterialTheme.typography.displayMedium,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        "Por favor, avalie a corrida com 5 estrelas no aplicativo.",
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        color = Color.Gray
+                                    )
+                                    androidx.compose.foundation.layout.Row(
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        repeat(5) {
+                                            Icon(
+                                                imageVector = Icons.Default.Star,
+                                                contentDescription = "Estrela",
+                                                tint = Color(0xFFFFD700),
+                                                modifier = Modifier.size(64.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (command == "CMD_EXIBIR_PIX" || command == "CMD_EXIBIR_MEU_PIX" || command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -901,7 +944,22 @@ fun PassengerScreen() {
                                                 modifier = Modifier.padding(24.dp),
                                                 verticalArrangement = Arrangement.spacedBy(20.dp)
                                             ) {
-                                                if (command == "CMD_EXIBIR_WIFI") {
+                                                if (command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
+                                                    if (command == "CMD_EXIBIR_BEM_VINDO") {
+                                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                            Text(
+                                                                "Bem-Vindo ao Carro!",
+                                                                style = MaterialTheme.typography.headlineMedium,
+                                                                color = Color(0xFF4DD0E1)
+                                                            )
+                                                            Text(
+                                                                "Fique à vontade e conecte-se à internet.",
+                                                                style = MaterialTheme.typography.bodyLarge,
+                                                                color = Color.Gray
+                                                            )
+                                                        }
+                                                        androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+                                                    }
                                                     // Rede Wi-Fi
                                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                                         Text(
@@ -985,7 +1043,7 @@ fun PassengerScreen() {
 
                                         // Instruction text
                                         Text(
-                                            if (command == "CMD_EXIBIR_WIFI") "Escaneie o QR Code ao lado para se conectar à rede Wi-Fi." else "Escaneie o QR Code ao lado para realizar o pagamento via Pix.",
+                                            if (command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") "Escaneie o QR Code ao lado para se conectar à rede Wi-Fi." else "Escaneie o QR Code ao lado para realizar o pagamento via Pix.",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = Color.Gray,
                                             modifier = Modifier.padding(horizontal = 8.dp)
