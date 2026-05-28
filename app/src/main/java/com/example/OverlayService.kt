@@ -131,10 +131,10 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
-                val connectedClients by TcpServer.connectedClientsCount.collectAsState()
+                val connectedClientsList by TcpServer.connectedClients.collectAsState()
                 MyApplicationTheme {
                     OverlayWidget(
-                        connectedClients = connectedClients,
+                        connectedClients = connectedClientsList.size,
                         onClose = { hideBubble() },
                         onDrag = { dx, dy ->
                             windowParams.x = (windowParams.x + dx).toInt()

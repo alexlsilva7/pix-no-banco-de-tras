@@ -15,8 +15,8 @@ object TcpServer {
 
     var isRunning = false
     
-    private val _connectedClientsCount = kotlinx.coroutines.flow.MutableStateFlow(0)
-    val connectedClientsCount: kotlinx.coroutines.flow.StateFlow<Int> = _connectedClientsCount
+    private val _connectedClients = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
+    val connectedClients: kotlinx.coroutines.flow.StateFlow<List<String>> = _connectedClients
 
     private val _isServerRunningState = kotlinx.coroutines.flow.MutableStateFlow(false)
     val isServerRunningState: kotlinx.coroutines.flow.StateFlow<Boolean> = _isServerRunningState
@@ -34,7 +34,7 @@ object TcpServer {
                     synchronized(clientSockets) {
                         clientSockets.add(newClient)
                         outputStreams.add(DataOutputStream(newClient.getOutputStream()))
-                        _connectedClientsCount.value = clientSockets.size
+                        _connectedClients.value = clientSockets.mapNotNull { it.inetAddress?.hostAddress }
                     }
                     Log.d("TcpServer", "Cliente conectado: ${newClient.inetAddress.hostAddress}")
                     
@@ -51,7 +51,7 @@ object TcpServer {
                                 if (index != -1) {
                                     clientSockets.removeAt(index)
                                     outputStreams.removeAt(index)
-                                    _connectedClientsCount.value = clientSockets.size
+                                    _connectedClients.value = clientSockets.mapNotNull { it.inetAddress?.hostAddress }
                                 }
                             }
                             newClient.close()
@@ -61,6 +61,18 @@ object TcpServer {
             }
         } catch (e: Exception) {
             Log.e("TcpServer", "Erro no servidor: ${e.message}")
+        }
+    }
+
+    init {
+        // Heartbeat to clear ghost connections
+        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+            while (true) {
+                kotlinx.coroutines.delay(5000)
+                if (isRunning) {
+                    sendCommand("CMD_PING")
+                }
+            }
         }
     }
 
@@ -83,7 +95,7 @@ object TcpServer {
                     iterSock.remove()
                 }
             }
-            _connectedClientsCount.value = clientSockets.size
+            _connectedClients.value = clientSockets.mapNotNull { it.inetAddress?.hostAddress }
         }
     }
     
@@ -105,7 +117,7 @@ object TcpServer {
                     iterSock.remove()
                 }
             }
-            _connectedClientsCount.value = clientSockets.size
+            _connectedClients.value = clientSockets.mapNotNull { it.inetAddress?.hostAddress }
         }
     }
 
@@ -126,7 +138,7 @@ object TcpServer {
                     iterSock.remove()
                 }
             }
-            _connectedClientsCount.value = clientSockets.size
+            _connectedClients.value = clientSockets.mapNotNull { it.inetAddress?.hostAddress }
         }
     }
 
@@ -140,7 +152,7 @@ object TcpServer {
                 }
                 clientSockets.clear()
                 outputStreams.clear()
-                _connectedClientsCount.value = 0
+                _connectedClients.value = emptyList()
             }
             serverSocket?.close()
         } catch (e: Exception) {

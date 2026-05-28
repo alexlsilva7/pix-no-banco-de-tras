@@ -421,7 +421,7 @@ fun DriverScreen() {
     
     val lastImageBytes by ImageRepository.lastCapturedImage.collectAsState()
     val scrollState = rememberScrollState()
-    val connectedClients by TcpServer.connectedClientsCount.collectAsState()
+    val connectedClients by TcpServer.connectedClients.collectAsState()
     val isServerRunning by TcpServer.isServerRunningState.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     
@@ -475,7 +475,10 @@ fun DriverScreen() {
                     color = if (isServerRunning) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (isServerRunning) {
-                    Text("$connectedClients dispositivo(s) conectado(s)", style = MaterialTheme.typography.bodyMedium)
+                    Text("${connectedClients.size} dispositivo(s) conectado(s)", style = MaterialTheme.typography.bodyMedium)
+                    if (connectedClients.isNotEmpty()) {
+                        Text("IPs: ${connectedClients.joinToString(", ")}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
                 Button(
