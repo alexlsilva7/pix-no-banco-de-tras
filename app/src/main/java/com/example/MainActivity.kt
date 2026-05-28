@@ -661,9 +661,22 @@ fun PassengerScreen() {
         val originalOrientation = activity?.requestedOrientation
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         
+        val window = activity?.window
+        if (window != null) {
+            androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+            val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+        
         onDispose {
             if (originalOrientation != null) {
                 activity?.requestedOrientation = originalOrientation
+            }
+            if (window != null) {
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+                val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             }
         }
     }
