@@ -948,7 +948,7 @@ fun PassengerScreen() {
                                                     if (command == "CMD_EXIBIR_BEM_VINDO") {
                                                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                                             Text(
-                                                                "Bem-Vindo ao Carro!",
+                                                                "Bem-Vindo!",
                                                                 style = MaterialTheme.typography.headlineMedium,
                                                                 color = Color(0xFF4DD0E1)
                                                             )

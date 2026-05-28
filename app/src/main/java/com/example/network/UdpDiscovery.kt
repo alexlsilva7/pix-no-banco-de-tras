@@ -62,8 +62,8 @@ object UdpDiscovery {
             socket.soTimeout = 3000 // 3 segundos de timeout
 
             val requestData = DISCOVERY_MESSAGE.toByteArray()
-            // Tenta enviar para o endereço de broadcast genérico
-            val broadcastAddress = InetAddress.getByName("255.255.255.255")
+            // Tenta enviar para o endereço de broadcast da sub-rede local, ou genérico como fallback
+            val broadcastAddress = getBroadcastAddress() ?: InetAddress.getByName("255.255.255.255")
             val requestPacket = DatagramPacket(
                 requestData, requestData.size,
                 broadcastAddress, UDP_PORT
@@ -89,5 +89,25 @@ object UdpDiscovery {
             socket?.close()
         }
         return@withContext null
+    }
+
+    private fun getBroadcastAddress(): InetAddress? {
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                if (networkInterface.isLoopback || !networkInterface.isUp) continue
+
+                for (interfaceAddress in networkInterface.interfaceAddresses) {
+                    val broadcast = interfaceAddress.broadcast
+                    if (broadcast != null) {
+                        return broadcast
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("UdpDiscovery", "Erro ao obter endereço de broadcast: ${e.message}")
+        }
+        return null
     }
 }
