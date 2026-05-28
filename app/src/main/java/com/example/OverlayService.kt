@@ -28,7 +28,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -40,6 +42,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhonelinkErase
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -157,7 +160,13 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                         onEnviarMeuPix = {
                             scope.launch {
                                 val pixPayload = "00020101021126360014br.gov.bcb.pix0114+55879815049025204000053039865802BR5919Alex Lopes da Silva6011GaranhunsPE62070503***6304539E"
-                                TcpServer.sendCommandAndText("CMD_EXIBIR_PIX", pixPayload)
+                                TcpServer.sendCommandAndText("CMD_EXIBIR_MEU_PIX", pixPayload)
+                            }
+                        },
+                        onEnviarMeuWifi = {
+                            scope.launch {
+                                val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
+                                TcpServer.sendCommandAndText("CMD_EXIBIR_WIFI", wifiPayload)
                             }
                         }
                     )
@@ -306,20 +315,25 @@ fun OverlayWidget(
     onLimparTela: () -> Unit,
     onApagarTela: () -> Unit,
     onExpandedChanged: (Boolean) -> Unit,
-    onEnviarMeuPix: () -> Unit = {}
+    onEnviarMeuPix: () -> Unit = {},
+    onEnviarMeuWifi: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
+    
+    val menuContainerColor = Color(0xDD1E1E1E) // Semi-transparent dark
+    val menuBorderColor = Color(0x55FFFFFF)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(8.dp)
+        modifier = Modifier.padding(16.dp)
     ) {
+        // Main Bubble
         Surface(
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary,
-            shadowElevation = 8.dp,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shadowElevation = 12.dp,
             modifier = Modifier
-                .size(60.dp)
+                .size(64.dp)
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
@@ -330,53 +344,129 @@ fun OverlayWidget(
                     expanded = !expanded 
                     onExpandedChanged(expanded)
                 }
+                .border(2.dp, if (connectedClients > 0) Color(0xFF4CAF50) else Color.Transparent, CircleShape)
         ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.QrCode, contentDescription = "Menu", tint = Color.White)
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Icon(
+                    Icons.Default.QrCode, 
+                    contentDescription = "Menu", 
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(32.dp)
+                )
                 
+                // Connection indicator badge
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp)
-                        .size(18.dp)
-                        .background(if (connectedClients > 0) Color.Green else Color.Red, CircleShape),
+                        .padding(4.dp)
+                        .size(20.dp)
+                        .background(if (connectedClients > 0) Color(0xFF4CAF50) else Color(0xFFE53935), CircleShape)
+                        .border(1.dp, Color.White, CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.material3.Text(
                         text = connectedClients.toString(),
                         color = Color.White,
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                     )
                 }
             }
         }
 
-        AnimatedVisibility(visible = expanded) {
-            Row(
+        // Expanded Menu
+        if (expanded) {
+            androidx.compose.foundation.layout.Column(
                 modifier = Modifier
-                    .padding(start = 8.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(30.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(30.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(start = 12.dp)
+                    .background(menuContainerColor, RoundedCornerShape(24.dp))
+                    .border(1.dp, menuBorderColor, RoundedCornerShape(24.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                IconButton(onClick = onCapture) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Capturar QR Code", tint = MaterialTheme.colorScheme.primary)
+                // Linha de Cima
+                Row(
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MenuActionButton(
+                        icon = Icons.Default.CameraAlt,
+                        label = "Capturar",
+                        tint = Color(0xFF64B5F6),
+                        onClick = { expanded = false; onExpandedChanged(false); onCapture() }
+                    )
+                    MenuActionButton(
+                        icon = Icons.Default.Payments,
+                        label = "Meu Pix",
+                        tint = Color(0xFF81C784),
+                        onClick = { expanded = false; onExpandedChanged(false); onEnviarMeuPix() }
+                    )
+                    MenuActionButton(
+                        icon = Icons.Default.Wifi,
+                        label = "Wi-Fi",
+                        tint = Color(0xFFBA68C8),
+                        onClick = { expanded = false; onExpandedChanged(false); onEnviarMeuWifi() }
+                    )
                 }
-                IconButton(onClick = onLimparTela) {
-                    Icon(Icons.Default.Delete, contentDescription = "Limpar Tela", tint = MaterialTheme.colorScheme.error)
-                }
-                IconButton(onClick = onApagarTela) {
-                    Icon(Icons.Default.PhonelinkErase, contentDescription = "Apagar Tela", tint = MaterialTheme.colorScheme.secondary)
-                }
-                IconButton(onClick = onEnviarMeuPix) {
-                    Icon(Icons.Default.Payments, contentDescription = "Enviar Meu Pix", tint = Color(0xFF4CAF50))
-                }
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Fechar")
+                
+                // Divisor Horizontal
+                Box(modifier = Modifier.size(140.dp, 1.dp).background(Color.Gray.copy(alpha = 0.5f)))
+                
+                // Linha de Baixo
+                Row(
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MenuActionButton(
+                        icon = Icons.Default.Delete,
+                        label = "Limpar",
+                        tint = Color(0xFFFFB74D),
+                        onClick = { expanded = false; onExpandedChanged(false); onLimparTela() }
+                    )
+                    MenuActionButton(
+                        icon = Icons.Default.PhonelinkErase,
+                        label = "Apagar",
+                        tint = Color(0xFFE57373),
+                        onClick = { expanded = false; onExpandedChanged(false); onApagarTela() }
+                    )
+                    MenuActionButton(
+                        icon = Icons.Default.Close,
+                        label = "Fechar",
+                        tint = Color.White,
+                        onClick = { expanded = false; onExpandedChanged(false); onClose() }
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MenuActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    androidx.compose.foundation.layout.Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(4.dp)
+    ) {
+        Icon(
+            imageVector = icon, 
+            contentDescription = label, 
+            tint = tint,
+            modifier = Modifier.size(28.dp)
+        )
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(4.dp))
+        androidx.compose.material3.Text(
+            text = label,
+            color = Color.White,
+            fontSize = 10.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+        )
     }
 }

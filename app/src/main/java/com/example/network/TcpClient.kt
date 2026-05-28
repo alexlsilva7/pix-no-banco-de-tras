@@ -45,7 +45,7 @@ object TcpClient {
                 Log.d("TcpClient", "Comando recebido: $cmd")
                 _command.value = cmd
 
-                if (cmd == "CMD_EXIBIR_PIX") {
+                if (cmd == "CMD_EXIBIR_PIX" || cmd == "CMD_EXIBIR_MEU_PIX" || cmd == "CMD_EXIBIR_WIFI") {
                     onExibirPixCallback?.invoke()
                     val qrText = inputStream?.readUTF() ?: ""
                     if (qrText.isNotEmpty()) {

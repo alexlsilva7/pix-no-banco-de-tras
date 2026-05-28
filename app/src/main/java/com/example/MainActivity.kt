@@ -57,6 +57,8 @@ import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material.icons.filled.WifiTetheringOff
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -92,6 +94,7 @@ const val DriverRoute = "driver"
 const val PassengerRoute = "passenger"
 const val SettingsRoute = "settings"
 const val MyPixQrCodeRoute = "my_pix_qr_code"
+const val MyWifiQrCodeRoute = "my_wifi_qr_code"
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -164,7 +167,8 @@ class MainActivity : ComponentActivity() {
                 onDriverSelected = { navController.navigate(DriverRoute) },
                 onPassengerSelected = { navController.navigate(PassengerRoute) },
                 onSettingsSelected = { navController.navigate(SettingsRoute) },
-                onMyPixQrCodeSelected = { navController.navigate(MyPixQrCodeRoute) }
+                onMyPixQrCodeSelected = { navController.navigate(MyPixQrCodeRoute) },
+                onMyWifiQrCodeSelected = { navController.navigate(MyWifiQrCodeRoute) }
               )
             }
             composable(DriverRoute) {
@@ -178,6 +182,9 @@ class MainActivity : ComponentActivity() {
             }
             composable(MyPixQrCodeRoute) {
               MyPixQrCodeScreen(onBack = { navController.popBackStack() })
+            }
+            composable(MyWifiQrCodeRoute) {
+              MyWifiQrCodeScreen(onBack = { navController.popBackStack() })
             }
           }
         }
@@ -198,7 +205,8 @@ fun ModeSelectionScreen(
   onDriverSelected: () -> Unit,
   onPassengerSelected: () -> Unit,
   onSettingsSelected: () -> Unit,
-  onMyPixQrCodeSelected: () -> Unit = {}
+  onMyPixQrCodeSelected: () -> Unit = {},
+  onMyWifiQrCodeSelected: () -> Unit = {}
 ) {
   Box(modifier = Modifier.fillMaxSize()) {
     androidx.compose.material3.IconButton(
@@ -298,6 +306,36 @@ fun ModeSelectionScreen(
         }
       }
       
+      Spacer(modifier = Modifier.height(24.dp))
+      
+      androidx.compose.material3.ElevatedCard(
+        onClick = onMyWifiQrCodeSelected,
+        modifier = Modifier.fillMaxWidth().height(120.dp).testTag("my_wifi_qr_button"),
+        shape = RoundedCornerShape(24.dp),
+        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+          containerColor = Color(0xFF4A148C),
+          contentColor = Color.White
+        )
+      ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+          androidx.compose.foundation.layout.Row(
+            modifier = Modifier.padding(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Icon(
+              imageVector = androidx.compose.material.icons.Icons.Default.Wifi,
+              contentDescription = "Meu Wi-Fi",
+              modifier = Modifier.size(48.dp)
+            )
+            Spacer(modifier = Modifier.width(24.dp))
+            Column {
+               Text("Wi-Fi do Carro", style = MaterialTheme.typography.titleLarge)
+               Text("Compartilhar internet com passageiros", style = MaterialTheme.typography.bodyMedium)
+            }
+          }
+        }
+      }
+
       Spacer(modifier = Modifier.height(24.dp))
       
       androidx.compose.material3.ElevatedCard(
@@ -788,118 +826,198 @@ fun PassengerScreen() {
                             }
                         }
                         
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            androidx.compose.foundation.layout.Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(32.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        if (command == "CMD_EXIBIR_MEU_PIX" || command == "CMD_EXIBIR_WIFI") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                // QR Code
-                                androidx.compose.material3.ElevatedCard(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .wrapContentHeight(),
-                                    shape = RoundedCornerShape(24.dp),
-                                    colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-                                        containerColor = Color.White
-                                    )
+                                androidx.compose.foundation.layout.Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(32.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Box(
+                                    // QR Code
+                                    androidx.compose.material3.ElevatedCard(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(24.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (qrBitmap != null) {
-                                            Image(
-                                                bitmap = qrBitmap.asImageBitmap(),
-                                                contentDescription = "QR Code Pix",
-                                                modifier = Modifier.size(280.dp),
-                                                contentScale = ContentScale.Fit
-                                            )
-                                        } else {
-                                            Text("Erro ao gerar QR Code", color = Color.Red)
-                                        }
-                                    }
-                                }
-
-                                // Info
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    androidx.compose.material3.Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(20.dp),
-                                        colors = androidx.compose.material3.CardDefaults.cardColors(
-                                            containerColor = Color(0xFF1E1E1E)
+                                            .weight(1f)
+                                            .wrapContentHeight(),
+                                        shape = RoundedCornerShape(24.dp),
+                                        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                            containerColor = Color.White
                                         )
                                     ) {
-                                        Column(
-                                            modifier = Modifier.padding(24.dp),
-                                            verticalArrangement = Arrangement.spacedBy(20.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(24.dp),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            // Name
-                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Text(
-                                                    "Nome",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.primary
+                                            if (qrBitmap != null) {
+                                                Image(
+                                                    bitmap = qrBitmap.asImageBitmap(),
+                                                    contentDescription = "QR Code Pix",
+                                                    modifier = Modifier.size(280.dp),
+                                                    contentScale = ContentScale.Fit
                                                 )
-                                                Text(
-                                                    "Alex Lopes da Silva",
-                                                    style = MaterialTheme.typography.titleLarge,
-                                                    color = Color.White
-                                                )
+                                            } else {
+                                                Text("Erro ao gerar QR Code", color = Color.Red)
                                             }
+                                        }
+                                    }
 
-                                            androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+                                    // Info
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        androidx.compose.material3.Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(20.dp),
+                                            colors = androidx.compose.material3.CardDefaults.cardColors(
+                                                containerColor = Color(0xFF1E1E1E)
+                                            )
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(24.dp),
+                                                verticalArrangement = Arrangement.spacedBy(20.dp)
+                                            ) {
+                                                if (command == "CMD_EXIBIR_WIFI") {
+                                                    // Rede Wi-Fi
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(
+                                                            "Rede Wi-Fi",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Text(
+                                                            "AL€X",
+                                                            style = MaterialTheme.typography.titleLarge,
+                                                            color = Color.White
+                                                        )
+                                                    }
 
-                                            // Institution
-                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Text(
-                                                    "Instituição",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                                Text(
-                                                    "Mercado Pago",
-                                                    style = MaterialTheme.typography.titleLarge,
-                                                    color = Color.White
-                                                )
-                                            }
+                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
 
-                                            androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+                                                    // Senha
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(
+                                                            "Senha",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        SelectionContainer {
+                                                            Text(
+                                                                "qwertyuiop",
+                                                                style = MaterialTheme.typography.titleLarge,
+                                                                color = Color.White
+                                                            )
+                                                        }
+                                                    }
+                                                } else {
+                                                    // Pix
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(
+                                                            "Nome",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Text(
+                                                            "Alex Lopes da Silva",
+                                                            style = MaterialTheme.typography.titleLarge,
+                                                            color = Color.White
+                                                        )
+                                                    }
 
-                                            // Chave PIX
-                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Text(
-                                                    "Chave Pix",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                                SelectionContainer {
-                                                    Text(
-                                                        "87981504902",
-                                                        style = MaterialTheme.typography.titleLarge,
-                                                        color = Color.White
-                                                    )
+                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(
+                                                            "Instituição",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Text(
+                                                            "Mercado Pago",
+                                                            style = MaterialTheme.typography.titleLarge,
+                                                            color = Color.White
+                                                        )
+                                                    }
+
+                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(
+                                                            "Chave Pix",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        SelectionContainer {
+                                                            Text(
+                                                                "87981504902",
+                                                                style = MaterialTheme.typography.titleLarge,
+                                                                color = Color.White
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
 
-                                    // Instruction text
+                                        // Instruction text
+                                        Text(
+                                            if (command == "CMD_EXIBIR_WIFI") "Escaneie o QR Code ao lado para se conectar à rede Wi-Fi." else "Escaneie o QR Code ao lado para realizar o pagamento via Pix.",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.Gray,
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Generic QR Code (e.g., from screenshot)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.foundation.layout.Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(24.dp)
+                                ) {
+                                    androidx.compose.material3.ElevatedCard(
+                                        shape = RoundedCornerShape(24.dp),
+                                        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                            containerColor = Color.White
+                                        )
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.padding(32.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (qrBitmap != null) {
+                                                Image(
+                                                    bitmap = qrBitmap.asImageBitmap(),
+                                                    contentDescription = "QR Code Genérico",
+                                                    modifier = Modifier.size(360.dp),
+                                                    contentScale = ContentScale.Fit
+                                                )
+                                            } else {
+                                                Text("Erro ao gerar QR Code", color = Color.Red)
+                                            }
+                                        }
+                                    }
                                     Text(
-                                        "Escaneie o QR Code ao lado para realizar o pagamento via Pix.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = Color.Gray,
-                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                        "QR Code extraído da tela",
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        "Escaneie o QR Code acima para visualizar ou pagar.",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = Color.Gray
                                     )
                                 }
                             }
@@ -1722,6 +1840,151 @@ fun MyPixQrCodeScreen(onBack: () -> Unit) {
                             modifier = Modifier.padding(horizontal = 8.dp)
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MyWifiQrCodeScreen(onBack: () -> Unit) {
+    val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
+    val qrBitmap = remember {
+        try {
+            val writer = com.google.zxing.qrcode.QRCodeWriter()
+            val bitMatrix = writer.encode(wifiPayload, com.google.zxing.BarcodeFormat.QR_CODE, 512, 512)
+            val w = bitMatrix.width
+            val h = bitMatrix.height
+            val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+            for (x in 0 until w) {
+                for (y in 0 until h) {
+                    bmp.setPixel(x, y, if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+                }
+            }
+            bmp
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // Back button
+        androidx.compose.material3.IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "Voltar",
+                tint = MaterialTheme.colorScheme.onBackground
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp)
+                .padding(top = 48.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // QR Code
+                androidx.compose.material3.ElevatedCard(
+                    modifier = Modifier
+                        .weight(1f)
+                        .wrapContentHeight(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                        containerColor = Color.White
+                    )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (qrBitmap != null) {
+                            Image(
+                                bitmap = qrBitmap.asImageBitmap(),
+                                contentDescription = "QR Code Wi-Fi",
+                                modifier = Modifier.size(280.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            Text("Erro ao gerar QR Code", color = Color.Red)
+                        }
+                    }
+                }
+
+                // Info
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = Color(0xFF1E1E1E)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(24.dp),
+                            verticalArrangement = Arrangement.spacedBy(20.dp)
+                        ) {
+                            // Rede Wi-Fi
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    "Rede Wi-Fi",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    "AL€X",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = Color.White
+                                )
+                            }
+
+                            androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                            // Senha
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    "Senha",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                SelectionContainer {
+                                    Text(
+                                        "qwertyuiop",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Instruction text
+                    Text(
+                        "Escaneie o QR Code ao lado para se conectar à rede Wi-Fi do carro.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
                 }
             }
         }
