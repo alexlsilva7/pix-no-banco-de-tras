@@ -27,7 +27,7 @@ object TcpClient {
     private val _command = MutableStateFlow<String?>(null)
     val command: StateFlow<String?> = _command.asStateFlow()
 
-    var onExibirPixCallback: (() -> Unit)? = null
+    var onExibirPixCallback: ((String) -> Unit)? = null
     var onFecharPixCallback: (() -> Unit)? = null
 
     suspend fun connect(ip: String, port: Int = 8080) = withContext(Dispatchers.IO) {
@@ -46,7 +46,7 @@ object TcpClient {
                 _command.value = cmd
 
                 if (cmd == "CMD_EXIBIR_PIX" || cmd == "CMD_EXIBIR_MEU_PIX" || cmd == "CMD_EXIBIR_WIFI") {
-                    onExibirPixCallback?.invoke()
+                    onExibirPixCallback?.invoke(cmd)
                     val qrText = inputStream?.readUTF() ?: ""
                     if (qrText.isNotEmpty()) {
                         _qrCodeText.value = qrText

@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     
     // Register callback to wake up screen when Pix is received
-    com.example.network.TcpClient.onExibirPixCallback = {
+    com.example.network.TcpClient.onExibirPixCallback = { cmd ->
       try {
         val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
         @Suppress("DEPRECATION")
@@ -113,39 +113,41 @@ class MainActivity : ComponentActivity() {
         )
         wakeLock.acquire(5000)
         
-        val intent = android.content.Intent(this, PixActivity::class.java).apply {
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        }
-        
-        val notificationManager = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        val channelId = "pix_alerts"
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = android.app.NotificationChannel(
-                channelId,
-                "Alertas de Pix",
-                android.app.NotificationManager.IMPORTANCE_HIGH
+        if (cmd == "CMD_EXIBIR_PIX") {
+            val intent = android.content.Intent(this, PixActivity::class.java).apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            
+            val notificationManager = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            val channelId = "pix_alerts"
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel(
+                    channelId,
+                    "Alertas de Pix",
+                    android.app.NotificationManager.IMPORTANCE_HIGH
+                )
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
             )
-            notificationManager.createNotificationChannel(channel)
+
+            val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("Novo Pix Recebido")
+                .setContentText("Você tem um novo QR Code de Pix na tela.")
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                .setCategory(androidx.core.app.NotificationCompat.CATEGORY_ALARM)
+                .setFullScreenIntent(pendingIntent, true)
+                .setAutoCancel(true)
+                .build()
+
+            notificationManager.notify(1001, notification)
         }
-
-        val pendingIntent = android.app.PendingIntent.getActivity(
-            this,
-            0,
-            intent,
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Novo Pix Recebido")
-            .setContentText("Você tem um novo QR Code de Pix na tela.")
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
-            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_ALARM)
-            .setFullScreenIntent(pendingIntent, true)
-            .setAutoCancel(true)
-            .build()
-
-        notificationManager.notify(1001, notification)
       } catch (e: Exception) {
           e.printStackTrace()
       }
