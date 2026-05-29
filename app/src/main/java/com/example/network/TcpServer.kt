@@ -1,9 +1,16 @@
 package com.example.network
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.DataOutputStream
 import java.net.ServerSocket
 import java.net.Socket
@@ -15,11 +22,15 @@ object TcpServer {
 
     var isRunning = false
     
-    private val _connectedClients = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
-    val connectedClients: kotlinx.coroutines.flow.StateFlow<List<String>> = _connectedClients
+    private val _connectedClients = MutableStateFlow<List<String>>(emptyList())
+    val connectedClients: StateFlow<List<String>> = _connectedClients
 
-    private val _isServerRunningState = kotlinx.coroutines.flow.MutableStateFlow(false)
-    val isServerRunningState: kotlinx.coroutines.flow.StateFlow<Boolean> = _isServerRunningState
+    private val _isServerRunningState = MutableStateFlow(false)
+    val isServerRunningState: StateFlow<Boolean> = _isServerRunningState
+
+    // 1. Escopo Dedicado: Sobrevive ao longo da vida do Singleton, 
+    // mas permite cancelar as tarefas filhas a qualquer momento.
+    private val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     suspend fun startServer(port: Int = 8080) = withContext(Dispatchers.IO) {
         if (isRunning) return@withContext
@@ -28,6 +39,15 @@ object TcpServer {
             isRunning = true
             _isServerRunningState.value = true
             Log.d("TcpServer", "Servidor iniciado na porta $port")
+
+            // 2. Heartbeat (PING): Inicia apenas quando o servidor liga
+            serverScope.launch {
+                while (isActive && isRunning) {
+                    delay(5000)
+                    sendCommand("CMD_PING")
+                }
+            }
+
             while (isRunning) {
                 val newClient = serverSocket?.accept()
                 if (newClient != null) {
@@ -38,13 +58,13 @@ object TcpServer {
                     }
                     Log.d("TcpServer", "Cliente conectado: ${newClient.inetAddress.hostAddress}")
                     
-                    // Listen for disconnections
-                    kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
+                    // 3. Listener de Desconexão rodando no escopo controlado
+                    serverScope.launch {
                         try {
                             // Simple read to detect disconnect
                             newClient.getInputStream().read()
                         } catch (e: Exception) {
-                            // Ignored
+                            // Ignored (Client disconnected abruptly)
                         } finally {
                             synchronized(clientSockets) {
                                 val index = clientSockets.indexOf(newClient)
@@ -54,25 +74,17 @@ object TcpServer {
                                     _connectedClients.value = clientSockets.mapNotNull { it.inetAddress?.hostAddress }
                                 }
                             }
-                            newClient.close()
+                            try { newClient.close() } catch (ignored: Exception) {}
                         }
                     }
                 }
             }
         } catch (e: Exception) {
             Log.e("TcpServer", "Erro no servidor: ${e.message}")
-        }
-    }
-
-    init {
-        // Heartbeat to clear ghost connections
-        kotlinx.coroutines.GlobalScope.launch(Dispatchers.IO) {
-            while (true) {
-                kotlinx.coroutines.delay(5000)
-                if (isRunning) {
-                    sendCommand("CMD_PING")
-                }
-            }
+        } finally {
+            // Se o loop principal (accept) for quebrado por alguma exceção na porta,
+            // garantimos que tudo seja desligado corretamente.
+            stopServer()
         }
     }
 
@@ -143,8 +155,15 @@ object TcpServer {
     }
 
     fun stopServer() {
+        if (!isRunning) return
+        
         isRunning = false
         _isServerRunningState.value = false
+        
+        // 4. Mata imediatamente as coroutines filhas (o PING e os Listeners)
+        // Isso evita que elas continuem consumindo CPU/Bateria em background
+        serverScope.coroutineContext.cancelChildren()
+
         try {
             synchronized(clientSockets) {
                 for (sock in clientSockets) {
@@ -155,6 +174,7 @@ object TcpServer {
                 _connectedClients.value = emptyList()
             }
             serverSocket?.close()
+            serverSocket = null
         } catch (e: Exception) {
              Log.e("TcpServer", "Erro ao parar servidor: ${e.message}")
         }

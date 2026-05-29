@@ -2,6 +2,7 @@ package com.example
 
 import android.os.Build
 import android.os.Bundle
+import com.example.ui.screens.*
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
