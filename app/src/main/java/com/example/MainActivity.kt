@@ -657,6 +657,9 @@ fun PassengerScreen() {
     var isDiscovering by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     
+    var autoReconnect by remember { mutableStateOf(true) }
+    var connectionTrigger by remember { mutableStateOf(0) }
+    
     val receivedImage by TcpClient.receivedImage.collectAsState()
     val qrCodeText by TcpClient.qrCodeText.collectAsState()
     val command by TcpClient.command.collectAsState()
@@ -697,21 +700,35 @@ fun PassengerScreen() {
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (!isConnected) {
-            val lastIp = prefs.getString("LAST_IP", "")
-            val currentPort = prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080
-            if (!lastIp.isNullOrEmpty() && lastIp != "192.168.") {
-                TcpClient.connect(lastIp, currentPort)
-            }
-            if (!TcpClient.isConnected.value) {
-                isDiscovering = true
-                val discoveredIp = com.example.network.UdpDiscovery.discoverServerIp()
-                isDiscovering = false
-                if (discoveredIp != null) {
-                    serverIp = discoveredIp
-                    prefs.edit().putString("LAST_IP", discoveredIp).apply()
-                    TcpClient.connect(discoveredIp, currentPort)
+    LaunchedEffect(isConnected, autoReconnect, connectionTrigger) {
+        if (!isConnected && autoReconnect) {
+            while (!TcpClient.isConnected.value && autoReconnect) {
+                val currentPort = prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080
+                val lastIp = prefs.getString("LAST_IP", "")
+                
+                // 1. Tenta reconectar imediatamente no último IP conhecido
+                if (!lastIp.isNullOrEmpty() && lastIp != "192.168.") {
+                    TcpClient.connect(lastIp, currentPort)
+                }
+
+                // Se o connect() acima falhou, a conexão continua false
+                if (!TcpClient.isConnected.value && autoReconnect) {
+                    // 2. BACKOFF: Aguarda 2 segundos para não sobrecarregar a rede
+                    kotlinx.coroutines.delay(2000)
+                    
+                    // 3. Tenta encontrar o IP na rede (Auto-Discovery)
+                    isDiscovering = true
+                    val discoveredIp = com.example.network.UdpDiscovery.discoverServerIp()
+                    isDiscovering = false
+                    
+                    if (discoveredIp != null) {
+                        serverIp = discoveredIp
+                        prefs.edit().putString("LAST_IP", discoveredIp).apply()
+                        TcpClient.connect(discoveredIp, currentPort)
+                    } else {
+                        // 4. Se não achou nada, aguarda mais 2 segundos antes de reiniciar o laço
+                        kotlinx.coroutines.delay(2000)
+                    }
                 }
             }
         }
@@ -1380,10 +1397,8 @@ fun PassengerScreen() {
                                         Button(
                                             onClick = {
                                                 prefs.edit().putString("LAST_IP", serverIp).apply()
-                                                scope.launch {
-                                                    val currentPort = prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080
-                                                    TcpClient.connect(serverIp, currentPort)
-                                                }
+                                                autoReconnect = true
+                                                connectionTrigger++
                                             },
                                             modifier = Modifier.fillMaxWidth().height(50.dp)
                                         ) {
@@ -1392,17 +1407,9 @@ fun PassengerScreen() {
                                         
                                         androidx.compose.material3.OutlinedButton(
                                             onClick = {
-                                                scope.launch {
-                                                    isDiscovering = true
-                                                    val discoveredIp = com.example.network.UdpDiscovery.discoverServerIp()
-                                                    isDiscovering = false
-                                                    if (discoveredIp != null) {
-                                                        serverIp = discoveredIp
-                                                        prefs.edit().putString("LAST_IP", discoveredIp).apply()
-                                                        val currentPort = prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080
-                                                        TcpClient.connect(discoveredIp, currentPort)
-                                                    }
-                                                }
+                                                prefs.edit().putString("LAST_IP", "").apply()
+                                                autoReconnect = true
+                                                connectionTrigger++
                                             },
                                             modifier = Modifier.fillMaxWidth().height(50.dp)
                                         ) {
@@ -1449,7 +1456,10 @@ fun PassengerScreen() {
         
         if (isConnected && receivedImage == null && qrCodeText == null) {
             androidx.compose.material3.IconButton(
-                onClick = { TcpClient.disconnect() },
+                onClick = { 
+                    autoReconnect = false // <-- Adicione isso! Impede o laço while de voltar
+                    TcpClient.disconnect() 
+                },
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
             ) {
                 Icon(Icons.Default.WifiTetheringOff, contentDescription = "Desconectar", tint = Color.Gray)
