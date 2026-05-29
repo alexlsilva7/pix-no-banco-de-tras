@@ -290,6 +290,7 @@ fun PassengerScreen() {
         androidx.compose.animation.AnimatedContent(
             targetState = when {
                 command == "CMD_APAGAR_TELA" -> "BLACK"
+                command == "CMD_EXIBIR_OBRIGADO" -> "OBRIGADO"
                 qrCodeText != null -> "QR_CODE"
                 receivedImage != null -> "IMAGE"
                 isConnected -> "WAITING"
@@ -303,6 +304,48 @@ fun PassengerScreen() {
             when (state) {
                 "BLACK" -> {
                     Box(modifier = Modifier.fillMaxSize())
+                }
+                "OBRIGADO" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.layout.Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = "Obrigado",
+                                tint = Color(0xFFF06292),
+                                modifier = Modifier.size(160.dp)
+                            )
+                            Text(
+                                "Obrigado por viajar comigo!",
+                                style = MaterialTheme.typography.displayMedium,
+                                color = Color.White
+                            )
+                            Text(
+                                "Por favor, avalie a corrida com 5 estrelas no aplicativo.",
+                                style = MaterialTheme.typography.headlineMedium,
+                                color = Color.Gray
+                            )
+                            androidx.compose.foundation.layout.Row(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                repeat(5) {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = "Estrela",
+                                        tint = Color(0xFFFFD700),
+                                        modifier = Modifier.size(64.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
                 "QR_CODE" -> {
                     val currentText = qrCodeText
@@ -326,48 +369,7 @@ fun PassengerScreen() {
                             }
                         }
                         
-                        if (command == "CMD_EXIBIR_OBRIGADO") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                androidx.compose.foundation.layout.Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Favorite,
-                                        contentDescription = "Obrigado",
-                                        tint = Color(0xFFF06292),
-                                        modifier = Modifier.size(160.dp)
-                                    )
-                                    Text(
-                                        "Obrigado por viajar comigo!",
-                                        style = MaterialTheme.typography.displayMedium,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        "Por favor, avalie a corrida com 5 estrelas no aplicativo.",
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        color = Color.Gray
-                                    )
-                                    androidx.compose.foundation.layout.Row(
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                    ) {
-                                        repeat(5) {
-                                            Icon(
-                                                imageVector = Icons.Default.Star,
-                                                contentDescription = "Estrela",
-                                                tint = Color(0xFFFFD700),
-                                                modifier = Modifier.size(64.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        } else if (command == "CMD_EXIBIR_PIX" || command == "CMD_EXIBIR_MEU_PIX" || command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
+                        if (command == "CMD_EXIBIR_PIX" || command == "CMD_EXIBIR_MEU_PIX" || command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
