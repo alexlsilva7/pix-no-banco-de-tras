@@ -1,5 +1,7 @@
 package com.example
 
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -41,6 +43,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -212,6 +215,9 @@ fun ModeSelectionScreen(
   onMyPixQrCodeSelected: () -> Unit = {},
   onMyWifiQrCodeSelected: () -> Unit = {}
 ) {
+  val configuration = LocalConfiguration.current
+  val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
   Box(modifier = Modifier.fillMaxSize()) {
     androidx.compose.material3.IconButton(
       onClick = onSettingsSelected,
@@ -237,9 +243,9 @@ fun ModeSelectionScreen(
         imageVector = Icons.Default.QrCode,
         contentDescription = null,
         tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.size(72.dp)
+        modifier = Modifier.size(isLandscape.let { if (it) 48.dp else 72.dp }) // Ícone menor em landscape
       )
-      Spacer(modifier = Modifier.height(16.dp))
+      Spacer(modifier = Modifier.height(8.dp))
       Text(
         text = "Pix no Banco de Trás",
         style = MaterialTheme.typography.headlineLarge,
@@ -250,123 +256,129 @@ fun ModeSelectionScreen(
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant
       )
-      Spacer(modifier = Modifier.height(48.dp))
+      Spacer(modifier = Modifier.height(32.dp))
       
-      androidx.compose.material3.ElevatedCard(
-        onClick = onDriverSelected,
-        modifier = Modifier.fillMaxWidth().height(120.dp).testTag("driver_button"),
-        shape = RoundedCornerShape(24.dp),
-        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-          containerColor = MaterialTheme.colorScheme.primaryContainer,
-          contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-      ) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-          androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Icon(
-              imageVector = Icons.Default.DirectionsCar,
-              contentDescription = "Motorista",
-              modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.width(24.dp))
-            Column {
-               Text("Motorista", style = MaterialTheme.typography.titleLarge)
-               Text("Compartilhe a tela (Servidor)", style = MaterialTheme.typography.bodyMedium)
-            }
+      // Layout condicional: Colunas duplas para landscape (tablets), lista única para retrato
+      if (isLandscape) {
+        androidx.compose.foundation.layout.Row(
+          modifier = Modifier.fillMaxWidth().weight(1f),
+          horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+          // Coluna Esquerda
+          Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            DriverCard(onDriverSelected)
+            MyPixCard(onMyPixQrCodeSelected)
+          }
+          // Coluna Direita
+          Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            PassengerCard(onPassengerSelected)
+            MyWifiCard(onMyWifiQrCodeSelected)
           }
         }
+      } else {
+        // Layout original
+        DriverCard(onDriverSelected)
+        Spacer(modifier = Modifier.height(24.dp))
+        MyPixCard(onMyPixQrCodeSelected)
+        Spacer(modifier = Modifier.height(24.dp))
+        MyWifiCard(onMyWifiQrCodeSelected)
+        Spacer(modifier = Modifier.height(24.dp))
+        PassengerCard(onPassengerSelected)
       }
-      
-      Spacer(modifier = Modifier.height(24.dp))
-      
-      androidx.compose.material3.ElevatedCard(
-        onClick = onMyPixQrCodeSelected,
-        modifier = Modifier.fillMaxWidth().height(120.dp).testTag("my_pix_qr_button"),
-        shape = RoundedCornerShape(24.dp),
-        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-          containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-          contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-        )
-      ) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-          androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Icon(
-              imageVector = Icons.Default.QrCode,
-              contentDescription = "Meu QR Code",
-              modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.width(24.dp))
-            Column {
-               Text("Meu QR Code Pix", style = MaterialTheme.typography.titleLarge)
-               Text("Exibir meu código de pagamento", style = MaterialTheme.typography.bodyMedium)
-            }
-          }
-        }
-      }
-      
-      Spacer(modifier = Modifier.height(24.dp))
-      
-      androidx.compose.material3.ElevatedCard(
-        onClick = onMyWifiQrCodeSelected,
-        modifier = Modifier.fillMaxWidth().height(120.dp).testTag("my_wifi_qr_button"),
-        shape = RoundedCornerShape(24.dp),
-        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-          containerColor = Color(0xFF4A148C),
-          contentColor = Color.White
-        )
-      ) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-          androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Icon(
-              imageVector = androidx.compose.material.icons.Icons.Default.Wifi,
-              contentDescription = "Meu Wi-Fi",
-              modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.width(24.dp))
-            Column {
-               Text("Wi-Fi do Carro", style = MaterialTheme.typography.titleLarge)
-               Text("Compartilhar internet com passageiros", style = MaterialTheme.typography.bodyMedium)
-            }
-          }
-        }
-      }
+    }
+  }
+}
 
-      Spacer(modifier = Modifier.height(24.dp))
-      
-      androidx.compose.material3.ElevatedCard(
-        onClick = onPassengerSelected,
-        modifier = Modifier.fillMaxWidth().height(120.dp).testTag("passenger_button"),
-        shape = RoundedCornerShape(24.dp),
-        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-          containerColor = MaterialTheme.colorScheme.secondaryContainer,
-          contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-        )
-      ) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-          androidx.compose.foundation.layout.Row(
-            modifier = Modifier.padding(24.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            Icon(
-              imageVector = Icons.Default.Person,
-              contentDescription = "Passageiro",
-              modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.width(24.dp))
-            Column {
-               Text("Passageiro", style = MaterialTheme.typography.titleLarge)
-               Text("Visualizar imagem do Pix (Cliente)", style = MaterialTheme.typography.bodyMedium)
-            }
-          }
+// Sub-componentes para limpar o código da tela inicial
+@Composable
+fun DriverCard(onClick: () -> Unit) {
+  androidx.compose.material3.ElevatedCard(
+    onClick = onClick,
+    modifier = Modifier.fillMaxWidth().height(120.dp).testTag("driver_button"),
+    shape = RoundedCornerShape(24.dp),
+    colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+      containerColor = MaterialTheme.colorScheme.primaryContainer,
+      contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+    )
+  ) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+      androidx.compose.foundation.layout.Row(modifier = Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = Icons.Default.DirectionsCar, contentDescription = "Motorista", modifier = Modifier.size(48.dp))
+        Spacer(modifier = Modifier.width(24.dp))
+        Column {
+           Text("Motorista", style = MaterialTheme.typography.titleLarge)
+           Text("Compartilhe a tela (Servidor)", style = MaterialTheme.typography.bodyMedium)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+fun MyPixCard(onClick: () -> Unit) {
+  androidx.compose.material3.ElevatedCard(
+    onClick = onClick,
+    modifier = Modifier.fillMaxWidth().height(120.dp).testTag("my_pix_qr_button"),
+    shape = RoundedCornerShape(24.dp),
+    colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+      containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+      contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    )
+  ) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+      androidx.compose.foundation.layout.Row(modifier = Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = Icons.Default.QrCode, contentDescription = "Meu QR Code", modifier = Modifier.size(48.dp))
+        Spacer(modifier = Modifier.width(24.dp))
+        Column {
+           Text("Meu QR Code Pix", style = MaterialTheme.typography.titleLarge)
+           Text("Exibir código de pagamento", style = MaterialTheme.typography.bodyMedium)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+fun MyWifiCard(onClick: () -> Unit) {
+  androidx.compose.material3.ElevatedCard(
+    onClick = onClick,
+    modifier = Modifier.fillMaxWidth().height(120.dp).testTag("my_wifi_qr_button"),
+    shape = RoundedCornerShape(24.dp),
+    colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+      containerColor = Color(0xFF4A148C), contentColor = Color.White
+    )
+  ) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+      androidx.compose.foundation.layout.Row(modifier = Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = Icons.Default.Wifi, contentDescription = "Meu Wi-Fi", modifier = Modifier.size(48.dp))
+        Spacer(modifier = Modifier.width(24.dp))
+        Column {
+           Text("Wi-Fi do Carro", style = MaterialTheme.typography.titleLarge)
+           Text("Compartilhar internet", style = MaterialTheme.typography.bodyMedium)
+        }
+      }
+    }
+  }
+}
+
+@Composable
+fun PassengerCard(onClick: () -> Unit) {
+  androidx.compose.material3.ElevatedCard(
+    onClick = onClick,
+    modifier = Modifier.fillMaxWidth().height(120.dp).testTag("passenger_button"),
+    shape = RoundedCornerShape(24.dp),
+    colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+      containerColor = MaterialTheme.colorScheme.secondaryContainer,
+      contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    )
+  ) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+      androidx.compose.foundation.layout.Row(modifier = Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = Icons.Default.Person, contentDescription = "Passageiro", modifier = Modifier.size(48.dp))
+        Spacer(modifier = Modifier.width(24.dp))
+        Column {
+           Text("Passageiro (Tablet)", style = MaterialTheme.typography.titleLarge)
+           Text("Visualizar Pix/Cliente", style = MaterialTheme.typography.bodyMedium)
         }
       }
     }
@@ -903,7 +915,7 @@ fun PassengerScreen() {
                                     androidx.compose.material3.ElevatedCard(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .wrapContentHeight(),
+                                            .fillMaxHeight(), // <-- MUDE DE wrapContentHeight PARA fillMaxHeight
                                         shape = RoundedCornerShape(24.dp),
                                         colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
                                             containerColor = Color.White
@@ -911,7 +923,7 @@ fun PassengerScreen() {
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .fillMaxWidth()
+                                                .fillMaxSize() // <-- MUDE DE fillMaxWidth PARA fillMaxSize
                                                 .padding(24.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -919,7 +931,7 @@ fun PassengerScreen() {
                                                 Image(
                                                     bitmap = qrBitmap.asImageBitmap(),
                                                     contentDescription = "QR Code Pix",
-                                                    modifier = Modifier.size(280.dp),
+                                                    modifier = Modifier.fillMaxSize(), // <-- MUDE DE size(280.dp) PARA fillMaxSize()
                                                     contentScale = ContentScale.Fit
                                                 )
                                             } else {
@@ -991,8 +1003,8 @@ fun PassengerScreen() {
                                                             )
                                                         }
                                                     }
-                                                } else {
-                                                    // Pix
+                                                } else if (command == "CMD_EXIBIR_MEU_PIX") {
+                                                    // Pix Fixo (Meu Pix)
                                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                                         Text(
                                                             "Nome",
@@ -1037,6 +1049,54 @@ fun PassengerScreen() {
                                                             )
                                                         }
                                                     }
+                                                } else {
+                                                    // Pix Extraído Dinamicamente
+                                                    val pixData = parsePixPayload(currentText)
+                                                    
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(
+                                                            "Nome",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Text(
+                                                            pixData.name,
+                                                            style = MaterialTheme.typography.titleLarge,
+                                                            color = Color.White
+                                                        )
+                                                    }
+
+                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(
+                                                            if (pixData.amount.isNotEmpty()) "Valor / Cidade" else "Cidade",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Text(
+                                                            if (pixData.amount.isNotEmpty()) "R$ ${pixData.amount} - ${pixData.city}" else pixData.city,
+                                                            style = MaterialTheme.typography.titleLarge,
+                                                            color = Color.White
+                                                        )
+                                                    }
+
+                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(
+                                                            "Chave Pix",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        SelectionContainer {
+                                                            Text(
+                                                                pixData.key,
+                                                                style = MaterialTheme.typography.titleLarge,
+                                                                color = Color.White
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1064,20 +1124,21 @@ fun PassengerScreen() {
                                     verticalArrangement = Arrangement.spacedBy(24.dp)
                                 ) {
                                     androidx.compose.material3.ElevatedCard(
+                                        modifier = Modifier.weight(1f), // <-- ADICIONE O WEIGHT AQUI PARA ELE PUXAR TODA A ALTURA
                                         shape = RoundedCornerShape(24.dp),
                                         colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
                                             containerColor = Color.White
                                         )
                                     ) {
                                         Box(
-                                            modifier = Modifier.padding(32.dp),
+                                            modifier = Modifier.fillMaxSize().padding(32.dp), // <-- MUDE PARA fillMaxSize
                                             contentAlignment = Alignment.Center
                                         ) {
                                             if (qrBitmap != null) {
                                                 Image(
                                                     bitmap = qrBitmap.asImageBitmap(),
                                                     contentDescription = "QR Code Genérico",
-                                                    modifier = Modifier.size(360.dp),
+                                                    modifier = Modifier.fillMaxSize(), // <-- MUDE DE size(360.dp) PARA fillMaxSize
                                                     contentScale = ContentScale.Fit
                                                 )
                                             } else {
@@ -1817,7 +1878,7 @@ fun MyPixQrCodeScreen(onBack: () -> Unit) {
                     androidx.compose.material3.ElevatedCard(
                         modifier = Modifier
                             .weight(1f)
-                            .wrapContentHeight(),
+                            .fillMaxHeight(),
                         shape = RoundedCornerShape(24.dp),
                         colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
                             containerColor = Color.White
@@ -1825,7 +1886,7 @@ fun MyPixQrCodeScreen(onBack: () -> Unit) {
                     ) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .fillMaxSize()
                                 .padding(24.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -1833,7 +1894,7 @@ fun MyPixQrCodeScreen(onBack: () -> Unit) {
                                 Image(
                                     bitmap = qrBitmap.asImageBitmap(),
                                     contentDescription = "QR Code Pix",
-                                    modifier = Modifier.size(280.dp),
+                                    modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit
                                 )
                             } else {
@@ -1979,7 +2040,7 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
                 androidx.compose.material3.ElevatedCard(
                     modifier = Modifier
                         .weight(1f)
-                        .wrapContentHeight(),
+                        .fillMaxHeight(),
                     shape = RoundedCornerShape(24.dp),
                     colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
                         containerColor = Color.White
@@ -1987,7 +2048,7 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .fillMaxSize()
                             .padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1995,7 +2056,7 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
                             Image(
                                 bitmap = qrBitmap.asImageBitmap(),
                                 contentDescription = "QR Code Wi-Fi",
-                                modifier = Modifier.size(280.dp),
+                                modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Fit
                             )
                         } else {
@@ -2065,4 +2126,56 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
             }
         }
     }
+}
+
+data class PixData(
+    val name: String,
+    val key: String,
+    val city: String,
+    val amount: String
+)
+
+fun parsePixPayload(payload: String): PixData {
+    var name = "Desconhecido"
+    var key = "Desconhecida"
+    var city = "Desconhecida"
+    var amount = ""
+    
+    try {
+        var index = 0
+        while (index < payload.length - 4) {
+            val id = payload.substring(index, index + 2)
+            val lengthStr = payload.substring(index + 2, index + 4)
+            val length = lengthStr.toIntOrNull() ?: break
+            if (index + 4 + length > payload.length) break
+            val value = payload.substring(index + 4, index + 4 + length)
+            
+            when (id) {
+                "26" -> {
+                    var subIndex = 0
+                    while (subIndex < value.length - 4) {
+                        val subId = value.substring(subIndex, subIndex + 2)
+                        val subLenStr = value.substring(subIndex + 2, subIndex + 4)
+                        val subLen = subLenStr.toIntOrNull() ?: break
+                        if (subIndex + 4 + subLen > value.length) break
+                        val subValue = value.substring(subIndex + 4, subIndex + 4 + subLen)
+                        if (subId == "01" || subId == "02" || subId == "03") {
+                            if (!subValue.startsWith("br.gov")) {
+                                key = subValue
+                            }
+                        }
+                        subIndex += 4 + subLen
+                    }
+                }
+                "59" -> name = value
+                "60" -> city = value
+                "54" -> amount = value
+            }
+            index += 4 + length
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    
+    return PixData(name, key, city, amount)
 }
