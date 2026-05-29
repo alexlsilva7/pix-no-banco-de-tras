@@ -173,61 +173,63 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 MyApplicationTheme {
                     OverlayWidget(
                         connectedClients = connectedClientsList.size,
-                        onClose = { hideBubble() },
-                        onDrag = { dx, dy ->
-                            windowParams.x = (windowParams.x + dx).toInt()
-                            windowParams.y = (windowParams.y + dy).toInt()
-                            if (isViewAdded) {
-                                try {
-                                    windowManager.updateViewLayout(view, windowParams)
-                                } catch (e: Exception) {
-                                    Log.e("OverlayService", "Erro no arrasto: ${e.message}")
+                        onAction = { action ->
+                            when (action) {
+                                is OverlayAction.Close -> hideBubble()
+                                is OverlayAction.Drag -> {
+                                    windowParams.x = (windowParams.x + action.dx).toInt()
+                                    windowParams.y = (windowParams.y + action.dy).toInt()
+                                    if (isViewAdded) {
+                                        try {
+                                            windowManager.updateViewLayout(view, windowParams)
+                                        } catch (e: Exception) {
+                                            Log.e("OverlayService", "Erro no arrasto: ${e.message}")
+                                        }
+                                    }
                                 }
-                            }
-                        },
-                        onCapture = { 
-                            captureScreenAndSend()
-                        },
-                        onLimparTela = {
-                            scope.launch {
-                                TcpServer.sendCommand("CMD_LIMPAR_TELA")
-                            }
-                        },
-                        onApagarTela = {
-                            scope.launch {
-                                TcpServer.sendCommand("CMD_APAGAR_TELA")
-                            }
-                        },
-                        onEnviarBemVindo = {
-                            scope.launch {
-                                val wifiPayload = "WIFI:S:AL'X;T:WPA;P:qwertyuiop;H:false;;"
-                                TcpServer.sendCommandAndText("CMD_EXIBIR_BEM_VINDO", wifiPayload)
-                            }
-                        },
-                        onEnviarObrigado = {
-                            scope.launch {
-                                TcpServer.sendCommandAndText("CMD_EXIBIR_OBRIGADO", "")
-                            }
-                        },
-                        onExpandedChanged = {
-                            if (isViewAdded) {
-                                try {
-                                    windowManager.updateViewLayout(view, windowParams)
-                                } catch (e: Exception) {
-                                    Log.e("OverlayService", "Erro ao atualizar layout: ${e.message}")
+                                is OverlayAction.Capture -> captureScreenAndSend()
+                                is OverlayAction.ClearScreen -> {
+                                    scope.launch {
+                                        TcpServer.sendCommand("CMD_LIMPAR_TELA")
+                                    }
                                 }
-                            }
-                        },
-                        onEnviarMeuPix = {
-                            scope.launch {
-                                val pixPayload = "00020101021126360014br.gov.bcb.pix0114+55879815049025204000053039865802BR5919Alex Lopes da Silva6011GaranhunsPE62070503***6304539E"
-                                TcpServer.sendCommandAndText("CMD_EXIBIR_MEU_PIX", pixPayload)
-                            }
-                        },
-                        onEnviarMeuWifi = {
-                            scope.launch {
-                                val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
-                                TcpServer.sendCommandAndText("CMD_EXIBIR_WIFI", wifiPayload)
+                                is OverlayAction.TurnOffScreen -> {
+                                    scope.launch {
+                                        TcpServer.sendCommand("CMD_APAGAR_TELA")
+                                    }
+                                }
+                                is OverlayAction.SendWelcome -> {
+                                    scope.launch {
+                                        val wifiPayload = "WIFI:S:AL'X;T:WPA;P:qwertyuiop;H:false;;"
+                                        TcpServer.sendCommandAndText("CMD_EXIBIR_BEM_VINDO", wifiPayload)
+                                    }
+                                }
+                                is OverlayAction.SendThanks -> {
+                                    scope.launch {
+                                        TcpServer.sendCommandAndText("CMD_EXIBIR_OBRIGADO", "")
+                                    }
+                                }
+                                is OverlayAction.ExpandChanged -> {
+                                    if (isViewAdded) {
+                                        try {
+                                            windowManager.updateViewLayout(view, windowParams)
+                                        } catch (e: Exception) {
+                                            Log.e("OverlayService", "Erro ao atualizar layout: ${e.message}")
+                                        }
+                                    }
+                                }
+                                is OverlayAction.SendMyPix -> {
+                                    scope.launch {
+                                        val pixPayload = "00020101021126360014br.gov.bcb.pix0114+55879815049025204000053039865802BR5919Alex Lopes da Silva6011GaranhunsPE62070503***6304539E"
+                                        TcpServer.sendCommandAndText("CMD_EXIBIR_MEU_PIX", pixPayload)
+                                    }
+                                }
+                                is OverlayAction.SendWifi -> {
+                                    scope.launch {
+                                        val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
+                                        TcpServer.sendCommandAndText("CMD_EXIBIR_WIFI", wifiPayload)
+                                    }
+                                }
                             }
                         }
                     )
@@ -393,19 +395,23 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
     }
 }
 
+sealed class OverlayAction {
+    data object Capture : OverlayAction()
+    data object ClearScreen : OverlayAction()
+    data object TurnOffScreen : OverlayAction()
+    data object SendMyPix : OverlayAction()
+    data object SendWifi : OverlayAction()
+    data object SendWelcome : OverlayAction()
+    data object SendThanks : OverlayAction()
+    data object Close : OverlayAction()
+    data class Drag(val dx: Float, val dy: Float) : OverlayAction()
+    data class ExpandChanged(val expanded: Boolean) : OverlayAction()
+}
+
 @Composable
 fun OverlayWidget(
     connectedClients: Int,
-    onClose: () -> Unit,
-    onDrag: (Float, Float) -> Unit,
-    onCapture: () -> Unit,
-    onLimparTela: () -> Unit,
-    onApagarTela: () -> Unit,
-    onExpandedChanged: (Boolean) -> Unit,
-    onEnviarMeuPix: () -> Unit = {},
-    onEnviarMeuWifi: () -> Unit = {},
-    onEnviarBemVindo: () -> Unit = {},
-    onEnviarObrigado: () -> Unit = {}
+    onAction: (OverlayAction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     
@@ -426,12 +432,12 @@ fun OverlayWidget(
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        onDrag(dragAmount.x, dragAmount.y)
+                        onAction(OverlayAction.Drag(dragAmount.x, dragAmount.y))
                     }
                 }
                 .clickable { 
                     expanded = !expanded 
-                    onExpandedChanged(expanded)
+                    onAction(OverlayAction.ExpandChanged(expanded))
                 }
                 .border(2.dp, if (connectedClients > 0) Color(0xFF4CAF50) else Color.Transparent, CircleShape)
         ) {
@@ -483,19 +489,19 @@ fun OverlayWidget(
                         icon = Icons.Default.CameraAlt,
                         label = "Capturar",
                         tint = Color(0xFF64B5F6),
-                        onClick = { expanded = false; onExpandedChanged(false); onCapture() }
+                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Capture) }
                     )
                     MenuActionButton(
                         icon = Icons.Default.Payments,
                         label = "Meu Pix",
                         tint = Color(0xFF81C784),
-                        onClick = { expanded = false; onExpandedChanged(false); onEnviarMeuPix() }
+                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendMyPix) }
                     )
                     MenuActionButton(
                         icon = Icons.Default.Wifi,
                         label = "Wi-Fi",
                         tint = Color(0xFFBA68C8),
-                        onClick = { expanded = false; onExpandedChanged(false); onEnviarMeuWifi() }
+                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWifi) }
                     )
                 }
                 
@@ -511,13 +517,13 @@ fun OverlayWidget(
                         icon = Icons.Default.DirectionsCar,
                         label = "Bem-Vindo",
                         tint = Color(0xFF4DD0E1),
-                        onClick = { expanded = false; onExpandedChanged(false); onEnviarBemVindo() }
+                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWelcome) }
                     )
                     MenuActionButton(
                         icon = Icons.Default.Favorite,
                         label = "Obrigado",
                         tint = Color(0xFFF06292),
-                        onClick = { expanded = false; onExpandedChanged(false); onEnviarObrigado() }
+                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendThanks) }
                     )
                 }
                 
@@ -533,19 +539,19 @@ fun OverlayWidget(
                         icon = Icons.Default.Delete,
                         label = "Limpar",
                         tint = Color(0xFFFFB74D),
-                        onClick = { expanded = false; onExpandedChanged(false); onLimparTela() }
+                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.ClearScreen) }
                     )
                     MenuActionButton(
                         icon = Icons.Default.PhonelinkErase,
                         label = "Apagar",
                         tint = Color(0xFFE57373),
-                        onClick = { expanded = false; onExpandedChanged(false); onApagarTela() }
+                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.TurnOffScreen) }
                     )
                     MenuActionButton(
                         icon = Icons.Default.Close,
                         label = "Fechar",
                         tint = Color.White,
-                        onClick = { expanded = false; onExpandedChanged(false); onClose() }
+                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Close) }
                     )
                 }
             }
