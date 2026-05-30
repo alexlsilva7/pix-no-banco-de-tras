@@ -29,14 +29,23 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -100,6 +109,48 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
     private var isViewAdded = false
     private lateinit var windowParams: WindowManager.LayoutParams
     private var isLifecycleInitialized = false
+
+    private val isAutoScanEnabled = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val isAutoScanPaused = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private var autoScanJob: Job? = null
+    private var lastQrCodeFoundTime: Long = 0
+    private val overlayToastMessage = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    private fun showOverlayToast(message: String) {
+        scope.launch(Dispatchers.Main) {
+            overlayToastMessage.value = message
+            delay(3000)
+            if (overlayToastMessage.value == message) {
+                overlayToastMessage.value = null
+            }
+        }
+    }
+
+    private fun toggleAutoScan() {
+        isAutoScanEnabled.value = !isAutoScanEnabled.value
+        if (isAutoScanEnabled.value) {
+            lastQrCodeFoundTime = 0 // Reset pause
+            isAutoScanPaused.value = false
+            showOverlayToast("Auto-Scan ativado")
+            autoScanJob?.cancel()
+            autoScanJob = scope.launch {
+                while(isActive && isAutoScanEnabled.value) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastQrCodeFoundTime >= 10 * 60 * 1000) {
+                        isAutoScanPaused.value = false
+                        captureScreenAndSend(isSilent = true)
+                    } else {
+                        isAutoScanPaused.value = true
+                    }
+                    delay(2000)
+                }
+            }
+        } else {
+            isAutoScanPaused.value = false
+            showOverlayToast("Auto-Scan desativado")
+            autoScanJob?.cancel()
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -170,12 +221,19 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 val connectedClientsList by TcpServer.connectedClients.collectAsState()
+                val autoScanState by isAutoScanEnabled.collectAsState()
+                val autoScanPausedState by isAutoScanPaused.collectAsState()
+                val toastMsg by overlayToastMessage.collectAsState()
                 MyApplicationTheme {
                     OverlayWidget(
                         connectedClients = connectedClientsList.size,
+                        isAutoScanEnabled = autoScanState,
+                        isAutoScanPaused = autoScanPausedState,
+                        toastMessage = toastMsg,
                         onAction = { action ->
                             when (action) {
                                 is OverlayAction.Close -> hideBubble()
+                                is OverlayAction.ToggleAutoScan -> toggleAutoScan()
                                 is OverlayAction.Drag -> {
                                     windowParams.x = (windowParams.x + action.dx).toInt()
                                     windowParams.y = (windowParams.y + action.dy).toInt()
@@ -292,21 +350,23 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         scope.cancel()
     }
 
-    private fun captureScreenAndSend() {
+    private fun captureScreenAndSend(isSilent: Boolean = false) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             scope.launch {
-                withContext(Dispatchers.Main) {
-                    if (::composeView.isInitialized) {
-                        composeView.visibility = android.view.View.INVISIBLE
+                if (!isSilent) {
+                    withContext(Dispatchers.Main) {
+                        if (::composeView.isInitialized) {
+                            composeView.visibility = android.view.View.INVISIBLE
+                        }
                     }
                 }
 
                 // Timeout de 3 segundos para restaurar visibilidade se takeScreenshot falhar silenciosamente
                 val timeoutJob = scope.launch(Dispatchers.Main) {
                     delay(3000)
-                    if (::composeView.isInitialized && composeView.visibility == android.view.View.INVISIBLE) {
+                    if (!isSilent && ::composeView.isInitialized && composeView.visibility == android.view.View.INVISIBLE) {
                         composeView.visibility = android.view.View.VISIBLE
-                        Toast.makeText(this@OverlayService, "Tempo limite de captura excedido.", Toast.LENGTH_SHORT).show()
+                        showOverlayToast("Tempo limite de captura excedido.")
                     }
                 }
 
@@ -348,10 +408,16 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                 if (qrText != null) {
                                     scope.launch {
                                         withContext(Dispatchers.Main) {
-                                            if (::composeView.isInitialized) {
+                                            if (!isSilent && ::composeView.isInitialized) {
                                                 composeView.visibility = android.view.View.VISIBLE
                                             }
-                                            Toast.makeText(this@OverlayService, "QR Code extraído e enviado!", Toast.LENGTH_SHORT).show()
+                                            if (!isSilent) {
+                                                showOverlayToast("QR Code extraído e enviado!")
+                                            } else {
+                                                lastQrCodeFoundTime = System.currentTimeMillis()
+                                                isAutoScanPaused.value = true
+                                                showOverlayToast("QR Code encontrado! Pausando por 10min.")
+                                            }
                                         }
                                         withContext(Dispatchers.IO) {
                                             TcpServer.sendCommandAndText("CMD_EXIBIR_PIX", qrText)
@@ -359,43 +425,44 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                     }
                                 } else {
                                     scope.launch(Dispatchers.Main) {
-                                        if (::composeView.isInitialized) {
+                                        if (!isSilent && ::composeView.isInitialized) {
                                             composeView.visibility = android.view.View.VISIBLE
                                         }
-                                        Toast.makeText(this@OverlayService, "Nenhum QR Code encontrado na tela.", Toast.LENGTH_SHORT).show()
+                                        if (!isSilent) showOverlayToast("Nenhum QR Code encontrado na tela.")
                                     }
                                 }
                             } else {
-                                restoreViewAndShowError()
+                                restoreViewAndShowError(isSilent)
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
-                            restoreViewAndShowError()
+                            restoreViewAndShowError(isSilent)
                         }
                     }
 
                     override fun onFailure(errorCode: Int) {
                         timeoutJob.cancel()
-                        restoreViewAndShowError()
+                        restoreViewAndShowError(isSilent)
                     }
                 })
             }
         } else {
-            Toast.makeText(this, "Captura de tela via Acessibilidade disponível apenas no Android 11+", Toast.LENGTH_LONG).show()
+            showOverlayToast("Captura de tela via Acessibilidade disponível apenas no Android 11+")
         }
     }
 
-    private fun restoreViewAndShowError() {
+    private fun restoreViewAndShowError(isSilent: Boolean = false) {
         scope.launch(Dispatchers.Main) {
-            if (::composeView.isInitialized) {
+            if (!isSilent && ::composeView.isInitialized) {
                 composeView.visibility = android.view.View.VISIBLE
             }
-            Toast.makeText(this@OverlayService, "Falha na captura.", Toast.LENGTH_SHORT).show()
+            if (!isSilent) showOverlayToast("Falha na captura.")
         }
     }
 }
 
 sealed class OverlayAction {
+    data object ToggleAutoScan : OverlayAction()
     data object Capture : OverlayAction()
     data object ClearScreen : OverlayAction()
     data object TurnOffScreen : OverlayAction()
@@ -411,147 +478,217 @@ sealed class OverlayAction {
 @Composable
 fun OverlayWidget(
     connectedClients: Int,
+    isAutoScanEnabled: Boolean = false,
+    isAutoScanPaused: Boolean = false,
+    toastMessage: String? = null,
     onAction: (OverlayAction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     
-    val menuContainerColor = Color(0xDD1E1E1E) // Semi-transparent dark
-    val menuBorderColor = Color(0x55FFFFFF)
+    // Gradiente escuro premium para o container
+    val containerGradient = Brush.verticalGradient(
+        colors = listOf(
+            Color(0xF21C1C26), // 95% de opacidade escuro azulado/cinza
+            Color(0xF212121A)
+        )
+    )
+    val menuBorderColor = Color(0x22FFFFFF) // Borda branca extremamente sutil (vidro fosco)
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(16.dp)
+    Column(
+        horizontalAlignment = Alignment.Start
     ) {
-        // Main Bubble
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shadowElevation = 12.dp,
-            modifier = Modifier
-                .size(64.dp)
-                .pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
-                        change.consume()
-                        onAction(OverlayAction.Drag(dragAmount.x, dragAmount.y))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            // Main Bubble (Bolha Flutuante)
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shadowElevation = 12.dp,
+                modifier = Modifier
+                    .size(64.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            onAction(OverlayAction.Drag(dragAmount.x, dragAmount.y))
+                        }
+                    }
+                    .clickable { 
+                        expanded = !expanded 
+                        onAction(OverlayAction.ExpandChanged(expanded))
+                    }
+                    .border(
+                        3.dp, 
+                        if (isAutoScanEnabled && isAutoScanPaused) Color(0xFFFFEB3B) 
+                        else if (isAutoScanEnabled) Color(0xFF2196F3) 
+                        else if (connectedClients > 0) Color(0xFF4CAF50) 
+                        else Color(0x33FFFFFF), // Borda cinza clara sutil quando ocioso
+                        CircleShape
+                    )
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        Icons.Default.QrCode, 
+                        contentDescription = "Menu", 
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(30.dp)
+                    )
+                    
+                    // Connection indicator badge (Indicador de conexão)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .size(18.dp)
+                            .background(if (connectedClients > 0) Color(0xFF4CAF50) else Color(0xFFE53935), CircleShape)
+                            .border(1.dp, Color.White, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = connectedClients.toString(),
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
-                .clickable { 
-                    expanded = !expanded 
-                    onAction(OverlayAction.ExpandChanged(expanded))
-                }
-                .border(2.dp, if (connectedClients > 0) Color(0xFF4CAF50) else Color.Transparent, CircleShape)
-        ) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                Icon(
-                    Icons.Default.QrCode, 
-                    contentDescription = "Menu", 
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(32.dp)
-                )
-                
-                // Connection indicator badge
-                Box(
+            }
+
+            // Expanded Menu (Menu Expandido Lateral)
+            if (expanded) {
+                Column(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(20.dp)
-                        .background(if (connectedClients > 0) Color(0xFF4CAF50) else Color(0xFFE53935), CircleShape)
-                        .border(1.dp, Color.White, CircleShape),
-                    contentAlignment = Alignment.Center
+                        .padding(start = 12.dp)
+                        .width(270.dp) // Largura fixa ideal para colunas perfeitamente alinhadas
+                        .background(containerGradient, RoundedCornerShape(24.dp))
+                        .border(1.dp, menuBorderColor, RoundedCornerShape(24.dp))
+                        .padding(horizontal = 12.dp, vertical = 16.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    androidx.compose.material3.Text(
-                        text = connectedClients.toString(),
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                    )
+                    // Linha de Cima
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.Autorenew,
+                                label = if (isAutoScanEnabled) "Parar Auto" else "Auto Scan",
+                                tint = if (isAutoScanEnabled) Color(0xFFE57373) else Color(0xFF64B5F6),
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.ToggleAutoScan) }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.CameraAlt,
+                                label = "Capturar",
+                                tint = Color(0xFF64B5F6),
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Capture) }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.Payments,
+                                label = "Meu Pix",
+                                tint = Color(0xFF81C784),
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendMyPix) }
+                            )
+                        }
+                    }
+                    
+                    // Divisor 1
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+                    
+                    // Linha do Meio
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.Wifi,
+                                label = "Wi-Fi",
+                                tint = Color(0xFFBA68C8),
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWifi) }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.DirectionsCar,
+                                label = "Bem-Vindo",
+                                tint = Color(0xFF4DD0E1),
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWelcome) }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.Favorite,
+                                label = "Obrigado",
+                                tint = Color(0xFFF06292),
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendThanks) }
+                            )
+                        }
+                    }
+                    
+                    // Divisor 2
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+                    
+                    // Linha de Baixo
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.Delete,
+                                label = "Limpar",
+                                tint = Color(0xFFFFB74D),
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.ClearScreen) }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.PhonelinkErase,
+                                label = "Apagar",
+                                tint = Color(0xFFE57373),
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.TurnOffScreen) }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.Close,
+                                label = "Fechar",
+                                tint = Color.White,
+                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Close) }
+                            )
+                        }
+                    }
                 }
             }
-        }
-
-        // Expanded Menu
-        if (expanded) {
-            androidx.compose.foundation.layout.Column(
-                modifier = Modifier
-                    .padding(start = 12.dp)
-                    .background(menuContainerColor, RoundedCornerShape(24.dp))
-                    .border(1.dp, menuBorderColor, RoundedCornerShape(24.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Linha de Cima
-                Row(
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+        } // Fecha a Row principal
+        
+        // Custom Toast Box
+        androidx.compose.animation.AnimatedVisibility(
+            visible = toastMessage != null,
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInVertically(),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.slideOutVertically()
+        ) {
+            if (toastMessage != null) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xDD333333),
+                    modifier = Modifier.padding(start = 16.dp, bottom = 16.dp)
                 ) {
-                    MenuActionButton(
-                        icon = Icons.Default.CameraAlt,
-                        label = "Capturar",
-                        tint = Color(0xFF64B5F6),
-                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Capture) }
-                    )
-                    MenuActionButton(
-                        icon = Icons.Default.Payments,
-                        label = "Meu Pix",
-                        tint = Color(0xFF81C784),
-                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendMyPix) }
-                    )
-                    MenuActionButton(
-                        icon = Icons.Default.Wifi,
-                        label = "Wi-Fi",
-                        tint = Color(0xFFBA68C8),
-                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWifi) }
-                    )
-                }
-                
-                // Divisor Horizontal
-                Box(modifier = Modifier.size(140.dp, 1.dp).background(Color.Gray.copy(alpha = 0.5f)))
-                
-                // Linha do Meio
-                Row(
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MenuActionButton(
-                        icon = Icons.Default.DirectionsCar,
-                        label = "Bem-Vindo",
-                        tint = Color(0xFF4DD0E1),
-                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWelcome) }
-                    )
-                    MenuActionButton(
-                        icon = Icons.Default.Favorite,
-                        label = "Obrigado",
-                        tint = Color(0xFFF06292),
-                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendThanks) }
-                    )
-                }
-                
-                // Divisor Horizontal
-                Box(modifier = Modifier.size(140.dp, 1.dp).background(Color.Gray.copy(alpha = 0.5f)))
-                
-                // Linha de Baixo
-                Row(
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    MenuActionButton(
-                        icon = Icons.Default.Delete,
-                        label = "Limpar",
-                        tint = Color(0xFFFFB74D),
-                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.ClearScreen) }
-                    )
-                    MenuActionButton(
-                        icon = Icons.Default.PhonelinkErase,
-                        label = "Apagar",
-                        tint = Color(0xFFE57373),
-                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.TurnOffScreen) }
-                    )
-                    MenuActionButton(
-                        icon = Icons.Default.Close,
-                        label = "Fechar",
-                        tint = Color.White,
-                        onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Close) }
+                    androidx.compose.material3.Text(
+                        text = toastMessage,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
             }
@@ -566,24 +703,37 @@ private fun MenuActionButton(
     tint: Color,
     onClick: () -> Unit
 ) {
-    androidx.compose.foundation.layout.Column(
+    Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(4.dp)
+            .padding(vertical = 8.dp)
     ) {
-        Icon(
-            imageVector = icon, 
-            contentDescription = label, 
-            tint = tint,
-            modifier = Modifier.size(28.dp)
-        )
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(4.dp))
+        // Bloco do ícone estilizado (estilo tile de painel moderno)
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(46.dp)
+                .background(tint.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+                .border(1.dp, tint.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
+        ) {
+            Icon(
+                imageVector = icon, 
+                contentDescription = label, 
+                tint = tint,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
         androidx.compose.material3.Text(
             text = label,
-            color = Color.White,
-            fontSize = 10.sp,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+            color = Color(0xFFE0E0E0),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

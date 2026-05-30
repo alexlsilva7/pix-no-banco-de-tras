@@ -102,7 +102,8 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
     val qrBitmap = remember {
         try {
             val writer = com.google.zxing.qrcode.QRCodeWriter()
-            val bitMatrix = writer.encode(wifiPayload, com.google.zxing.BarcodeFormat.QR_CODE, 512, 512)
+            val hints = mapOf(com.google.zxing.EncodeHintType.MARGIN to 0)
+            val bitMatrix = writer.encode(wifiPayload, com.google.zxing.BarcodeFormat.QR_CODE, 512, 512, hints)
             val w = bitMatrix.width
             val h = bitMatrix.height
             val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
@@ -140,19 +141,19 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp)
+                .padding(12.dp)
                 .padding(top = 48.dp),
             contentAlignment = Alignment.Center
         ) {
             androidx.compose.foundation.layout.Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(32.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // QR Code
                 androidx.compose.material3.ElevatedCard(
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(2f)
                         .fillMaxHeight(),
                     shape = RoundedCornerShape(24.dp),
                     colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
@@ -162,7 +163,7 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(24.dp),
+                            .padding(0.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         if (qrBitmap != null) {

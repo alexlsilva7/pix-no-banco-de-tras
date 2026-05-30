@@ -129,18 +129,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         isAdminActive = dpm.isAdminActive(adminComponent)
     }
 
-    // Force landscape mode for settings screen (it fits perfectly with the tablet flow)
-    DisposableEffect(Unit) {
-        val activity = context.getActivity()
-        val originalOrientation = activity?.requestedOrientation
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        
-        onDispose {
-            if (originalOrientation != null) {
-                activity?.requestedOrientation = originalOrientation
-            }
-        }
-    }
+
 
     Box(
         modifier = Modifier
