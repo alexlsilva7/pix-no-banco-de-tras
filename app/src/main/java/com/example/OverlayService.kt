@@ -88,7 +88,46 @@ import com.example.ui.theme.MyApplicationTheme
 
 class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null) return
+
+        val pkgName = event.packageName?.toString()
+        
+        // Ignora os eventos do próprio aplicativo
+        if (pkgName == packageName) return
+
+        val eventTypeStr = AccessibilityEvent.eventTypeToString(event.eventType)
+        val currentEvents = debugEventTypes.value.toMutableList()
+        currentEvents.add(0, eventTypeStr)
+        if (currentEvents.size > 5) {
+            currentEvents.removeAt(currentEvents.size - 1)
+        }
+        debugEventTypes.value = currentEvents
+
+        if (!pkgName.isNullOrEmpty() && debugPackageName.value != pkgName) {
+            debugPackageName.value = pkgName
+        }
+
+        if (isAutoScanEnabled.value) {
+            val target = targetPackageFlow.value
+            val currentPkg = debugPackageName.value
+            if (target.isEmpty() || target == currentPkg) {
+                val now = System.currentTimeMillis()
+                val intervalMs = autoScanIntervalFlow.value * 60 * 1000L
+                if (now - lastQrCodeFoundTime >= intervalMs) {
+                    if (now - lastCaptureTime >= 2000) {
+                        lastCaptureTime = now
+                        isAutoScanPaused.value = false
+                        captureScreenAndSend(isSilent = true)
+                    }
+                } else {
+                    isAutoScanPaused.value = true
+                }
+            } else {
+                isAutoScanPaused.value = true
+            }
+        }
+    }
 
     override fun onInterrupt() {}
 
@@ -112,8 +151,15 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
 
     private val isAutoScanEnabled = kotlinx.coroutines.flow.MutableStateFlow(false)
     private val isAutoScanPaused = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val debugPackageName = kotlinx.coroutines.flow.MutableStateFlow<String>("Aguardando...")
+    private val debugEventTypes = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
+    private val targetPackageFlow = kotlinx.coroutines.flow.MutableStateFlow("")
+    private val isDebugMonitorEnabledFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
+    private val autoScanIntervalFlow = kotlinx.coroutines.flow.MutableStateFlow(10)
+    private lateinit var prefsListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener
     private var autoScanJob: Job? = null
     private var lastQrCodeFoundTime: Long = 0
+    private var lastCaptureTime: Long = 0
     private val overlayToastMessage = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
     private fun showOverlayToast(message: String) {
@@ -132,23 +178,9 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             lastQrCodeFoundTime = 0 // Reset pause
             isAutoScanPaused.value = false
             showOverlayToast("Auto-Scan ativado")
-            autoScanJob?.cancel()
-            autoScanJob = scope.launch {
-                while(isActive && isAutoScanEnabled.value) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastQrCodeFoundTime >= 10 * 60 * 1000) {
-                        isAutoScanPaused.value = false
-                        captureScreenAndSend(isSilent = true)
-                    } else {
-                        isAutoScanPaused.value = true
-                    }
-                    delay(2000)
-                }
-            }
         } else {
             isAutoScanPaused.value = false
             showOverlayToast("Auto-Scan desativado")
-            autoScanJob?.cancel()
         }
     }
 
@@ -165,6 +197,20 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             }
             isLifecycleInitialized = true
         }
+
+        val prefs = getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
+        targetPackageFlow.value = prefs.getString("TARGET_PACKAGE", "") ?: ""
+        isDebugMonitorEnabledFlow.value = prefs.getBoolean("DEBUG_MONITOR_ENABLED", false)
+        autoScanIntervalFlow.value = (prefs.getString("AUTO_SCAN_INTERVAL", "10") ?: "10").toIntOrNull() ?: 10
+
+        prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
+            when (key) {
+                "TARGET_PACKAGE" -> targetPackageFlow.value = sharedPreferences?.getString(key, "") ?: ""
+                "DEBUG_MONITOR_ENABLED" -> isDebugMonitorEnabledFlow.value = sharedPreferences?.getBoolean(key, false) ?: false
+                "AUTO_SCAN_INTERVAL" -> autoScanIntervalFlow.value = (sharedPreferences?.getString(key, "10") ?: "10").toIntOrNull() ?: 10
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
@@ -224,12 +270,19 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 val autoScanState by isAutoScanEnabled.collectAsState()
                 val autoScanPausedState by isAutoScanPaused.collectAsState()
                 val toastMsg by overlayToastMessage.collectAsState()
+                val currentPkg by debugPackageName.collectAsState()
+                val currentEvents by debugEventTypes.collectAsState()
+                val isDebugEnabled by isDebugMonitorEnabledFlow.collectAsState()
+                
                 MyApplicationTheme {
                     OverlayWidget(
                         connectedClients = connectedClientsList.size,
                         isAutoScanEnabled = autoScanState,
                         isAutoScanPaused = autoScanPausedState,
                         toastMessage = toastMsg,
+                        debugPkgName = currentPkg,
+                        debugEventNames = currentEvents,
+                        isDebugEnabled = isDebugEnabled,
                         onAction = { action ->
                             when (action) {
                                 is OverlayAction.Close -> hideBubble()
@@ -383,11 +436,20 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
 
                             if (bitmap != null) {
                                 // Decode QR code from screenshot using ZXing
-                                val width = bitmap.width
-                                val height = bitmap.height
-                                val pixels = IntArray(width * height)
-                                bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+                                val scaleFactor = 0.5f // Reduz a resolução pela metade
+                                val scaledBitmap = Bitmap.createScaledBitmap(
+                                    bitmap,
+                                    (bitmap.width * scaleFactor).toInt(),
+                                    (bitmap.height * scaleFactor).toInt(),
+                                    false
+                                )
                                 bitmap.recycle()
+
+                                val width = scaledBitmap.width
+                                val height = scaledBitmap.height
+                                val pixels = IntArray(width * height)
+                                scaledBitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+                                scaledBitmap.recycle()
 
                                 val source = com.google.zxing.RGBLuminanceSource(width, height, pixels)
                                 val binaryBitmap = com.google.zxing.BinaryBitmap(
@@ -416,7 +478,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                             } else {
                                                 lastQrCodeFoundTime = System.currentTimeMillis()
                                                 isAutoScanPaused.value = true
-                                                showOverlayToast("QR Code encontrado! Pausando por 10min.")
+                                                showOverlayToast("QR Code encontrado! Pausando por ${autoScanIntervalFlow.value}min.")
                                             }
                                         }
                                         withContext(Dispatchers.IO) {
@@ -481,6 +543,9 @@ fun OverlayWidget(
     isAutoScanEnabled: Boolean = false,
     isAutoScanPaused: Boolean = false,
     toastMessage: String? = null,
+    debugPkgName: String = "",
+    debugEventNames: List<String> = emptyList(),
+    isDebugEnabled: Boolean = false,
     onAction: (OverlayAction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -672,6 +737,31 @@ fun OverlayWidget(
             }
         } // Fecha a Row principal
         
+        if (isDebugEnabled && !expanded) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.padding(start = 16.dp, top = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                    androidx.compose.material3.Text(
+                        text = debugPkgName,
+                        color = Color.Green,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    debugEventNames.forEach { eventName ->
+                        androidx.compose.material3.Text(
+                            text = eventName,
+                            color = Color(0xFF81C784),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+
         // Custom Toast Box
         androidx.compose.animation.AnimatedVisibility(
             visible = toastMessage != null,

@@ -109,6 +109,10 @@ fun SettingsScreen(onBack: () -> Unit) {
     var offScreenBehavior by remember { mutableStateOf(prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK") }
     var safetyTimeout by remember { mutableStateOf(prefs.getString("SAFETY_TIMEOUT", "2") ?: "2") }
     
+    var targetPackage by remember { mutableStateOf(prefs.getString("TARGET_PACKAGE", "") ?: "") }
+    var debugMonitorEnabled by remember { mutableStateOf(prefs.getBoolean("DEBUG_MONITOR_ENABLED", false)) }
+    var autoScanInterval by remember { mutableStateOf(prefs.getString("AUTO_SCAN_INTERVAL", "10") ?: "10") }
+    
     val dpm = remember { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
     val adminComponent = remember { ComponentName(context, MyDeviceAdminReceiver::class.java) }
     var isAdminActive by remember { mutableStateOf(dpm.isAdminActive(adminComponent)) }
@@ -258,6 +262,93 @@ fun SettingsScreen(onBack: () -> Unit) {
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Captura Automática (Auto-Scan)",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    OutlinedTextField(
+                        value = targetPackage,
+                        onValueChange = {
+                            targetPackage = it
+                            prefs.edit().putString("TARGET_PACKAGE", it).apply()
+                        },
+                        label = { Text("Aplicativo Alvo (Package Name)", color = Color.Gray) },
+                        placeholder = { Text("Deixe vazio para funcionar em todos", color = Color.Gray) },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = Color.Gray
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Intervalo do Auto-Scan", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val intervals = listOf("1" to "1 min", "5" to "5 min", "10" to "10 min", "30" to "30 min")
+                            intervals.forEach { (value, label) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        autoScanInterval = value
+                                        prefs.edit().putString("AUTO_SCAN_INTERVAL", value).apply()
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (autoScanInterval == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (autoScanInterval == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            label,
+                                            color = if (autoScanInterval == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = Color(0xFF2C2C2C)
+                        )
+                    ) {
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Monitor de Pacotes (Debug)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                                Text("Exibe a etiqueta verde no Overlay", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                            }
+                            androidx.compose.material3.Switch(
+                                checked = debugMonitorEnabled,
+                                onCheckedChange = {
+                                    debugMonitorEnabled = it
+                                    prefs.edit().putBoolean("DEBUG_MONITOR_ENABLED", it).apply()
+                                }
+                            )
                         }
                     }
                 }
