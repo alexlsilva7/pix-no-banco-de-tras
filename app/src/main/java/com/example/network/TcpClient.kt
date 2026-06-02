@@ -12,6 +12,7 @@ import java.net.Socket
 object TcpClient {
     private var socket: Socket? = null
     private var inputStream: DataInputStream? = null
+    private var outputStream: java.io.DataOutputStream? = null
     
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
@@ -36,6 +37,7 @@ object TcpClient {
             socket = Socket()
             socket?.connect(java.net.InetSocketAddress(ip, port), 1000)
             inputStream = DataInputStream(socket?.getInputStream())
+            outputStream = java.io.DataOutputStream(socket?.getOutputStream())
             isRunning = true
             _isConnected.value = true
             Log.d("TcpClient", "Conectado ao servidor $ip:$port")
@@ -78,10 +80,20 @@ object TcpClient {
         _isConnected.value = false
         try {
             inputStream?.close()
+            outputStream?.close()
             socket?.close()
             socket = null
         } catch (e: Exception) {
              Log.e("TcpClient", "Erro ao desconectar: ${e.message}")
+        }
+    }
+
+    suspend fun sendTelemetry(msg: String) = withContext(Dispatchers.IO) {
+        try {
+            outputStream?.writeUTF(msg)
+            outputStream?.flush()
+        } catch (e: Exception) {
+            Log.e("TcpClient", "Erro ao enviar telemetria: ${e.message}")
         }
     }
 }

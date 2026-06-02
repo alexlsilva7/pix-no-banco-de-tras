@@ -55,6 +55,8 @@ import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material.icons.filled.WifiTetheringOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,12 +90,52 @@ import com.example.ui.theme.MyApplicationTheme
 
 class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
 
+    // Vasculha a tela lendo textos do Android de forma leve
+    private fun findKeywordInNode(node: android.view.accessibility.AccessibilityNodeInfo?, keywords: List<String>): Boolean {
+        if (node == null) return false
+        val text = node.text?.toString()?.lowercase() ?: ""
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        
+        if (keywords.any { text.contains(it) || desc.contains(it) }) {
+            return true
+        }
+        
+        for (i in 0 until node.childCount) {
+            if (findKeywordInNode(node.getChild(i), keywords)) return true
+        }
+        return false
+    }
+
+    // Extrai o QR Code de um Bitmap usando ZXing
+    private fun decodeQrCode(bitmap: Bitmap): String? {
+        return try {
+            val width = bitmap.width
+            val height = bitmap.height
+            val pixels = IntArray(width * height)
+            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+
+            val source = com.google.zxing.RGBLuminanceSource(width, height, pixels)
+            val binaryBitmap = com.google.zxing.BinaryBitmap(
+                com.google.zxing.common.HybridBinarizer(source)
+            )
+
+            val hints = mapOf(
+                com.google.zxing.DecodeHintType.POSSIBLE_FORMATS to listOf(com.google.zxing.BarcodeFormat.QR_CODE),
+                com.google.zxing.DecodeHintType.TRY_HARDER to true
+            )
+            com.google.zxing.MultiFormatReader().decode(binaryBitmap, hints).text
+        } catch (e: com.google.zxing.NotFoundException) {
+            null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         val pkgName = event.packageName?.toString()
-        
-        // Ignora os eventos do próprio aplicativo
         if (pkgName == packageName) return
 
         val eventTypeStr = AccessibilityEvent.eventTypeToString(event.eventType)
@@ -111,17 +153,35 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         if (isAutoScanEnabled.value) {
             val target = targetPackageFlow.value
             val currentPkg = debugPackageName.value
+            
             if (target.isEmpty() || target == currentPkg) {
+                // Palavras-chave para a tela de cobrança da Uber/99
+                val keywords = listOf("dinheiro ou pix", "qr code expira", "cobrar do passageiro")
+                
+                val rootNode = rootInActiveWindow
+                val isChargingScreen = findKeywordInNode(rootNode, keywords)
+                rootNode?.recycle() // Importante liberar memória
+
                 val now = System.currentTimeMillis()
                 val intervalMs = autoScanIntervalFlow.value * 60 * 1000L
-                if (now - lastQrCodeFoundTime >= intervalMs) {
-                    if (now - lastCaptureTime >= 2000) {
-                        lastCaptureTime = now
-                        isAutoScanPaused.value = false
-                        captureScreenAndSend(isSilent = true)
+
+                if (isChargingScreen) {
+                    if (now - lastQrCodeFoundTime >= intervalMs) {
+                        if (now - lastCaptureTime >= 2000) {
+                            lastCaptureTime = now
+                            isAutoScanPaused.value = false
+                            captureScreenAndSend(isSilent = true)
+                        }
+                    } else {
+                        isAutoScanPaused.value = true
                     }
                 } else {
-                    isAutoScanPaused.value = true
+                    // Motorista saiu da tela de cobrança, resetar para a próxima corrida
+                    if (isAutoScanPaused.value) {
+                        lastQrCodeFoundTime = 0
+                        isAutoScanPaused.value = false
+                        showOverlayToast("Auto-Scan pronto para próxima corrida")
+                    }
                 }
             } else {
                 isAutoScanPaused.value = true
@@ -156,6 +216,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
     private val targetPackageFlow = kotlinx.coroutines.flow.MutableStateFlow("")
     private val isDebugMonitorEnabledFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
     private val autoScanIntervalFlow = kotlinx.coroutines.flow.MutableStateFlow(10)
+    private val qrScaleFactorFlow = kotlinx.coroutines.flow.MutableStateFlow(0.5f)
     private lateinit var prefsListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener
     private var autoScanJob: Job? = null
     private var lastQrCodeFoundTime: Long = 0
@@ -202,12 +263,14 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         targetPackageFlow.value = prefs.getString("TARGET_PACKAGE", "") ?: ""
         isDebugMonitorEnabledFlow.value = prefs.getBoolean("DEBUG_MONITOR_ENABLED", false)
         autoScanIntervalFlow.value = (prefs.getString("AUTO_SCAN_INTERVAL", "10") ?: "10").toIntOrNull() ?: 10
+        qrScaleFactorFlow.value = prefs.getFloat("QR_SCALE_FACTOR", 0.5f)
 
         prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
             when (key) {
                 "TARGET_PACKAGE" -> targetPackageFlow.value = sharedPreferences?.getString(key, "") ?: ""
                 "DEBUG_MONITOR_ENABLED" -> isDebugMonitorEnabledFlow.value = sharedPreferences?.getBoolean(key, false) ?: false
                 "AUTO_SCAN_INTERVAL" -> autoScanIntervalFlow.value = (sharedPreferences?.getString(key, "10") ?: "10").toIntOrNull() ?: 10
+                "QR_SCALE_FACTOR" -> qrScaleFactorFlow.value = sharedPreferences?.getFloat(key, 0.5f) ?: 0.5f
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -267,6 +330,8 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 val connectedClientsList by TcpServer.connectedClients.collectAsState()
+                val passengerBattery by TcpServer.clientBatteryState.collectAsState()
+                val isServerRunning by TcpServer.isServerRunningState.collectAsState() // <-- ADICIONADO
                 val autoScanState by isAutoScanEnabled.collectAsState()
                 val autoScanPausedState by isAutoScanPaused.collectAsState()
                 val toastMsg by overlayToastMessage.collectAsState()
@@ -277,6 +342,8 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 MyApplicationTheme {
                     OverlayWidget(
                         connectedClients = connectedClientsList.size,
+                        passengerBattery = passengerBattery,
+                        isServerRunning = isServerRunning, // <-- ADICIONADO
                         isAutoScanEnabled = autoScanState,
                         isAutoScanPaused = autoScanPausedState,
                         toastMessage = toastMsg,
@@ -339,6 +406,29 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                     scope.launch {
                                         val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
                                         TcpServer.sendCommandAndText("CMD_EXIBIR_WIFI", wifiPayload)
+                                    }
+                                }
+                                // NOVAS AÇÕES TRATADAS ABAIXO
+                                is OverlayAction.ToggleServer -> {
+                                    scope.launch {
+                                        if (TcpServer.isRunning) {
+                                            TcpServer.stopServer()
+                                        } else {
+                                            val prefs = getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
+                                            val portString = prefs.getString("PORT", "8080") ?: "8080"
+                                            val port = portString.toIntOrNull() ?: 8080
+                                            TcpServer.startServer(port)
+                                        }
+                                    }
+                                }
+                                is OverlayAction.OpenApp -> {
+                                    try {
+                                        val intent = Intent(this@OverlayService, MainActivity::class.java).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                                        }
+                                        startActivity(intent)
+                                    } catch (e: Exception) {
+                                        Log.e("OverlayService", "Erro ao abrir MainActivity: ${e.message}")
                                     }
                                 }
                             }
@@ -435,39 +525,41 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                             hardwareBuffer.close()
 
                             if (bitmap != null) {
-                                // Decode QR code from screenshot using ZXing
-                                val scaleFactor = 0.5f // Reduz a resolução pela metade
-                                val scaledBitmap = Bitmap.createScaledBitmap(
-                                    bitmap,
-                                    (bitmap.width * scaleFactor).toInt(),
-                                    (bitmap.height * scaleFactor).toInt(),
-                                    false
-                                )
+                                // Tenta decodificar o Bitmap no tamanho original primeiro
+                                var qrText = decodeQrCode(bitmap)
+                                
+                                // Fallback: Se falhou, aplica o scaleFactor dinâmico configurado pelo usuário
+                                if (qrText == null) {
+                                    val scaleFactor = qrScaleFactorFlow.value
+                                    if (scaleFactor < 1.0f) {
+                                        val scaledBitmap = Bitmap.createScaledBitmap(
+                                            bitmap,
+                                            (bitmap.width * scaleFactor).toInt(),
+                                            (bitmap.height * scaleFactor).toInt(),
+                                            false
+                                        )
+                                        qrText = decodeQrCode(scaledBitmap)
+                                        scaledBitmap.recycle()
+                                    }
+                                }
                                 bitmap.recycle()
 
-                                val width = scaledBitmap.width
-                                val height = scaledBitmap.height
-                                val pixels = IntArray(width * height)
-                                scaledBitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-                                scaledBitmap.recycle()
-
-                                val source = com.google.zxing.RGBLuminanceSource(width, height, pixels)
-                                val binaryBitmap = com.google.zxing.BinaryBitmap(
-                                    com.google.zxing.common.HybridBinarizer(source)
-                                )
-
-                                val qrText: String? = try {
-                                    val hints = mapOf(
-                                        com.google.zxing.DecodeHintType.POSSIBLE_FORMATS to listOf(com.google.zxing.BarcodeFormat.QR_CODE),
-                                        com.google.zxing.DecodeHintType.TRY_HARDER to true
-                                    )
-                                    val result = com.google.zxing.MultiFormatReader().decode(binaryBitmap, hints)
-                                    result.text
-                                } catch (e: com.google.zxing.NotFoundException) {
-                                    null
-                                }
-
                                 if (qrText != null) {
+                                    // NOTIFICAR MOTORISTA COM BIPE E VIBRAÇÃO CURTA
+                                    try {
+                                        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                            vibrator.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                                        } else {
+                                            @Suppress("DEPRECATION")
+                                            vibrator.vibrate(120)
+                                        }
+                                        val toneG = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
+                                        toneG.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 100)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+
                                     scope.launch {
                                         withContext(Dispatchers.Main) {
                                             if (!isSilent && ::composeView.isInitialized) {
@@ -478,7 +570,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                             } else {
                                                 lastQrCodeFoundTime = System.currentTimeMillis()
                                                 isAutoScanPaused.value = true
-                                                showOverlayToast("QR Code encontrado! Pausando por ${autoScanIntervalFlow.value}min.")
+                                                showOverlayToast("QR Code detectado automaticamente!")
                                             }
                                         }
                                         withContext(Dispatchers.IO) {
@@ -498,13 +590,20 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
-                            restoreViewAndShowError(isSilent)
+                            restoreViewAndShowError(isSilent, "Erro ao processar imagem: ${e.message}")
                         }
                     }
 
                     override fun onFailure(errorCode: Int) {
                         timeoutJob.cancel()
-                        restoreViewAndShowError(isSilent)
+                        val errorMsg = when(errorCode) {
+                            1 -> "Erro Interno (1)"
+                            2 -> "Sem acesso de acessibilidade (2)"
+                            3 -> "Tempo muito curto (3)"
+                            4 -> "Display inválido (4)"
+                            else -> "Erro desconhecido ($errorCode)"
+                        }
+                        restoreViewAndShowError(isSilent, "Falha na captura: $errorMsg")
                     }
                 })
             }
@@ -513,12 +612,12 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         }
     }
 
-    private fun restoreViewAndShowError(isSilent: Boolean = false) {
+    private fun restoreViewAndShowError(isSilent: Boolean = false, errorMessage: String? = null) {
         scope.launch(Dispatchers.Main) {
             if (!isSilent && ::composeView.isInitialized) {
                 composeView.visibility = android.view.View.VISIBLE
             }
-            if (!isSilent) showOverlayToast("Falha na captura.")
+            if (!isSilent) showOverlayToast(errorMessage ?: "Falha na captura.")
         }
     }
 }
@@ -535,11 +634,17 @@ sealed class OverlayAction {
     data object Close : OverlayAction()
     data class Drag(val dx: Float, val dy: Float) : OverlayAction()
     data class ExpandChanged(val expanded: Boolean) : OverlayAction()
+    
+    // NOVAS AÇÕES ADICIONADAS
+    data object ToggleServer : OverlayAction()
+    data object OpenApp : OverlayAction()
 }
 
 @Composable
 fun OverlayWidget(
     connectedClients: Int,
+    passengerBattery: Int = -1,
+    isServerRunning: Boolean,
     isAutoScanEnabled: Boolean = false,
     isAutoScanPaused: Boolean = false,
     toastMessage: String? = null,
@@ -632,6 +737,28 @@ fun OverlayWidget(
                     verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    // NOVO: Mostrador de bateria do passageiro
+                    if (passengerBattery >= 0) {
+                        val batteryColor = when {
+                            passengerBattery <= 20 -> Color(0xFFEF5350) // Vermelho
+                            passengerBattery <= 50 -> Color(0xFFFFB74D) // Laranja
+                            else -> Color(0xFF81C784) // Verde
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                        ) {
+                            androidx.compose.material3.Text(
+                                text = "🔋 Bateria do Passageiro: $passengerBattery%",
+                                color = batteryColor,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+                    }
+
                     // Linha de Cima
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -730,6 +857,37 @@ fun OverlayWidget(
                                 label = "Fechar",
                                 tint = Color.White,
                                 onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Close) }
+                            )
+                        }
+                    }
+
+                    // Divisor 3 (Nova linha)
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
+                    
+                    // Linha de Gerenciamento do App (Servidor e Atalho do App)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.weight(1.5f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = if (isServerRunning) Icons.Default.WifiTetheringOff else Icons.Default.WifiTethering,
+                                label = if (isServerRunning) "Parar Server" else "Ligar Server",
+                                tint = if (isServerRunning) Color(0xFFE57373) else Color(0xFF81C784),
+                                onClick = { onAction(OverlayAction.ToggleServer) }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1.5f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.DirectionsCar,
+                                label = "Abrir App",
+                                tint = Color(0xFF4DD0E1),
+                                onClick = { 
+                                    expanded = false
+                                    onAction(OverlayAction.ExpandChanged(false))
+                                    onAction(OverlayAction.OpenApp) 
+                                }
                             )
                         }
                     }

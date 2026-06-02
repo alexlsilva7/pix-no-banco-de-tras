@@ -99,6 +99,8 @@ import com.example.MyDeviceAdminReceiver
 import com.example.PixActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import android.os.BatteryManager
+import android.content.IntentFilter
 
 @Composable
 fun PassengerScreen() {
@@ -108,7 +110,7 @@ fun PassengerScreen() {
     var isDiscovering by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     
-    var autoReconnect by remember { mutableStateOf(true) }
+    var autoReconnect by remember { mutableStateOf(prefs.getBoolean("AUTO_RECONNECT", true)) }
     var connectionTrigger by remember { mutableStateOf(0) }
     
     val receivedImage by TcpClient.receivedImage.collectAsState()
@@ -147,6 +149,25 @@ fun PassengerScreen() {
                 androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
                 val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
                 windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    fun getBatteryPercentage(ctx: Context): Int {
+        val batteryStatus = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        return if (level >= 0 && scale > 0) (level * 100 / scale) else -1
+    }
+
+    LaunchedEffect(isConnected) {
+        if (isConnected) {
+            while (TcpClient.isConnected.value) {
+                val pct = getBatteryPercentage(context)
+                if (pct >= 0) {
+                    TcpClient.sendTelemetry("TELEMETRY_BATTERY:$pct")
+                }
+                kotlinx.coroutines.delay(60000L) // Atualiza a cada 60 segundos
             }
         }
     }
@@ -706,7 +727,13 @@ fun PassengerScreen() {
                                     )
                                     OutlinedTextField(
                                         value = serverIp,
-                                        onValueChange = { serverIp = it },
+                                        onValueChange = { 
+                                            serverIp = it 
+                                            if (autoReconnect) {
+                                                autoReconnect = false
+                                                prefs.edit().putBoolean("AUTO_RECONNECT", false).apply()
+                                            }
+                                        },
                                         label = { Text("IP do Motorista", color = Color.Gray) },
                                         textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
                                         colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
@@ -717,6 +744,34 @@ fun PassengerScreen() {
                                         ),
                                         modifier = Modifier.fillMaxWidth()
                                     )
+                                    
+                                    androidx.compose.foundation.layout.Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth().clickable {
+                                            autoReconnect = !autoReconnect
+                                            prefs.edit().putBoolean("AUTO_RECONNECT", autoReconnect).apply()
+                                        }.padding(vertical = 4.dp)
+                                    ) {
+                                        androidx.compose.material3.Switch(
+                                            checked = autoReconnect,
+                                            onCheckedChange = { 
+                                                autoReconnect = it 
+                                                prefs.edit().putBoolean("AUTO_RECONNECT", it).apply()
+                                            },
+                                            colors = androidx.compose.material3.SwitchDefaults.colors(
+                                                checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                                checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
+                                                uncheckedThumbColor = Color.Gray,
+                                                uncheckedTrackColor = Color.DarkGray
+                                            )
+                                        )
+                                        Text(
+                                            text = "Auto-Conectar (buscar motorista)",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
                                     
                                     Text(
                                         text = "Ao apagar a tela:",

@@ -28,6 +28,9 @@ object TcpServer {
     private val _isServerRunningState = MutableStateFlow(false)
     val isServerRunningState: StateFlow<Boolean> = _isServerRunningState
 
+    private val _clientBatteryState = MutableStateFlow(-1)
+    val clientBatteryState: StateFlow<Int> = _clientBatteryState
+
     // 1. Escopo Dedicado: Sobrevive ao longo da vida do Singleton, 
     // mas permite cancelar as tarefas filhas a qualquer momento.
     private val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -58,13 +61,19 @@ object TcpServer {
                     }
                     Log.d("TcpServer", "Cliente conectado: ${newClient.inetAddress.hostAddress}")
                     
-                    // 3. Listener de Desconexão rodando no escopo controlado
+                    // 3. Listener de Mensagens e Desconexão
                     serverScope.launch {
+                        val dis = java.io.DataInputStream(newClient.getInputStream())
                         try {
-                            // Simple read to detect disconnect
-                            newClient.getInputStream().read()
+                            while (isRunning) {
+                                val msg = dis.readUTF()
+                                if (msg.startsWith("TELEMETRY_BATTERY:")) {
+                                    val pct = msg.substringAfter("TELEMETRY_BATTERY:").toIntOrNull() ?: -1
+                                    _clientBatteryState.value = pct
+                                }
+                            }
                         } catch (e: Exception) {
-                            // Ignored (Client disconnected abruptly)
+                            // Cliente desconectou de forma abrupta
                         } finally {
                             synchronized(clientSockets) {
                                 val index = clientSockets.indexOf(newClient)
@@ -72,6 +81,10 @@ object TcpServer {
                                     clientSockets.removeAt(index)
                                     outputStreams.removeAt(index)
                                     _connectedClients.value = clientSockets.mapNotNull { it.inetAddress?.hostAddress }
+                                }
+                                // Se não há mais clientes, reseta o estado da bateria
+                                if (clientSockets.isEmpty()) {
+                                    _clientBatteryState.value = -1
                                 }
                             }
                             try { newClient.close() } catch (ignored: Exception) {}

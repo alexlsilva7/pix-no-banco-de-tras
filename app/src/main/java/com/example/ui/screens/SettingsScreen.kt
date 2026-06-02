@@ -112,6 +112,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     var targetPackage by remember { mutableStateOf(prefs.getString("TARGET_PACKAGE", "") ?: "") }
     var debugMonitorEnabled by remember { mutableStateOf(prefs.getBoolean("DEBUG_MONITOR_ENABLED", false)) }
     var autoScanInterval by remember { mutableStateOf(prefs.getString("AUTO_SCAN_INTERVAL", "10") ?: "10") }
+    var qrScaleFactor by remember { mutableStateOf(prefs.getFloat("QR_SCALE_FACTOR", 0.5f)) }
     
     val dpm = remember { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
     val adminComponent = remember { ComponentName(context, MyDeviceAdminReceiver::class.java) }
@@ -155,17 +156,17 @@ fun SettingsScreen(onBack: () -> Unit) {
                 )
             )
 
-            androidx.compose.foundation.layout.Row(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Left Column: Network & Passenger
                 Column(
                     modifier = Modifier
-                        .weight(1.1f)
+                        .fillMaxWidth()
                         .background(Color(0xFF1E1E1E), RoundedCornerShape(16.dp))
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -290,6 +291,49 @@ fun SettingsScreen(onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    // NOVO CÓDIGO: Sugestões rápidas de Pacotes
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Sugestões rápidas:", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val packageSuggestions = listOf(
+                                "99" to "com.app99.drive",
+                                "Uber" to "com.ubercab.driver",
+                                "Todos" to "" // Vazio significa funcionar em todos
+                            )
+                            
+                            packageSuggestions.forEach { (label, pkg) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        targetPackage = pkg
+                                        prefs.edit().putString("TARGET_PACKAGE", pkg).apply()
+                                    },
+                                    modifier = Modifier.height(32.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (targetPackage == pkg) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (targetPackage == pkg) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = if (targetPackage == pkg) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(8.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Intervalo do Auto-Scan", color = Color.White, style = MaterialTheme.typography.bodyMedium)
@@ -317,6 +361,43 @@ fun SettingsScreen(onBack: () -> Unit) {
                                         Text(
                                             label,
                                             color = if (autoScanInterval == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Escala de Redução (Fallback)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        Text("Usada caso a leitura em 100% falhe. Menor = Mais rápido.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val scales = listOf(0.25f to "25%", 0.50f to "50%", 0.75f to "75%")
+                            scales.forEach { (value, label) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        qrScaleFactor = value
+                                        prefs.edit().putFloat("QR_SCALE_FACTOR", value).apply()
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (qrScaleFactor == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (qrScaleFactor == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            label,
+                                            color = if (qrScaleFactor == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
                                             style = MaterialTheme.typography.bodySmall
                                         )
                                     }
@@ -356,7 +437,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 // Right Column: Screen Behavior & Permissions
                 Column(
                     modifier = Modifier
-                        .weight(0.9f)
+                        .fillMaxWidth()
                         .background(Color(0xFF1E1E1E), RoundedCornerShape(16.dp))
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
