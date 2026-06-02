@@ -127,10 +127,10 @@ fun ModeSelectionScreen(
       verticalArrangement = Arrangement.Center
     ) {
       Icon(
-        imageVector = Icons.Default.QrCode,
+        painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.ic_launcher_foreground),
         contentDescription = null,
-        tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.size(isLandscape.let { if (it) 48.dp else 72.dp }) // Ícone menor em landscape
+        tint = Color.Unspecified,
+        modifier = Modifier.size(isLandscape.let { if (it) 64.dp else 96.dp }) // Ícone menor em landscape
       )
       Spacer(modifier = Modifier.height(8.dp))
       Text(

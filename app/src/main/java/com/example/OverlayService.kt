@@ -57,6 +57,9 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material.icons.filled.WifiTetheringOff
+import androidx.compose.material.icons.filled.List
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -104,6 +107,20 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             if (findKeywordInNode(node.getChild(i), keywords)) return true
         }
         return false
+    }
+
+    private fun logAllScreenTexts(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int = 0) {
+        if (node == null) return
+        val text = node.text?.toString() ?: ""
+        val desc = node.contentDescription?.toString() ?: ""
+        if (text.isNotEmpty() || desc.isNotEmpty()) {
+            // Imprime no console com recuo de árvore para fácil leitura
+            val indent = "  ".repeat(depth)
+            Log.d("PixDebugScanner", "${indent}Texto: '$text' | Desc: '$desc'")
+        }
+        for (i in 0 until node.childCount) {
+            logAllScreenTexts(node.getChild(i), depth + 1)
+        }
     }
 
     // Extrai o QR Code de um Bitmap usando ZXing
@@ -156,10 +173,16 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             
             if (target.isEmpty() || target == currentPkg) {
                 // Palavras-chave para a tela de cobrança da Uber/99
-                val keywords = listOf("dinheiro ou pix", "qr code expira", "cobrar do passageiro")
+                val keywords = listOf("dinheiro ou pix", "expira em", "cobrar do", "copiar codigo")
                 
                 val rootNode = rootInActiveWindow
+                
+                // --- ADICIONE ESTA LINHA PARA IMPRIMIR NO LOGCAT ---
+                logAllScreenTexts(rootNode)
+                
                 val isChargingScreen = findKeywordInNode(rootNode, keywords)
+                
+                Log.d("PixDebugScanner", "Tela de cobrança detectada? $isChargingScreen | Pacote ativo: $currentPkg")
                 rootNode?.recycle() // Importante liberar memória
 
                 val now = System.currentTimeMillis()
@@ -222,6 +245,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
     private var lastQrCodeFoundTime: Long = 0
     private var lastCaptureTime: Long = 0
     private val overlayToastMessage = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    private val scannedLogsFlow = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
     private fun showOverlayToast(message: String) {
         scope.launch(Dispatchers.Main) {
@@ -338,6 +362,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 val currentPkg by debugPackageName.collectAsState()
                 val currentEvents by debugEventTypes.collectAsState()
                 val isDebugEnabled by isDebugMonitorEnabledFlow.collectAsState()
+                val scannedLogs by scannedLogsFlow.collectAsState()
                 
                 MyApplicationTheme {
                     OverlayWidget(
@@ -350,6 +375,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                         debugPkgName = currentPkg,
                         debugEventNames = currentEvents,
                         isDebugEnabled = isDebugEnabled,
+                        scannedLogs = scannedLogs,
                         onAction = { action ->
                             when (action) {
                                 is OverlayAction.Close -> hideBubble()
@@ -430,6 +456,31 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                     } catch (e: Exception) {
                                         Log.e("OverlayService", "Erro ao abrir MainActivity: ${e.message}")
                                     }
+                                }
+                                is OverlayAction.ScanLogs -> {
+                                    val rootNode = rootInActiveWindow
+                                    val sb = java.lang.StringBuilder()
+                                    fun traverse(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int = 0) {
+                                        if (node == null) return
+                                        val text = node.text?.toString() ?: ""
+                                        val desc = node.contentDescription?.toString() ?: ""
+                                        if (text.isNotEmpty() || desc.isNotEmpty()) {
+                                            val indent = "  ".repeat(depth)
+                                            sb.append("$indent- Texto: '$text' | Desc: '$desc'\n")
+                                        }
+                                        for (i in 0 until node.childCount) {
+                                            traverse(node.getChild(i), depth + 1)
+                                        }
+                                    }
+                                    traverse(rootNode)
+                                    if (sb.isEmpty()) {
+                                        sb.append("Nenhum texto encontrado na tela.")
+                                    }
+                                    scannedLogsFlow.value = sb.toString()
+                                    rootNode?.recycle()
+                                }
+                                is OverlayAction.CloseLogsDialog -> {
+                                    scannedLogsFlow.value = null
                                 }
                             }
                         }
@@ -638,6 +689,8 @@ sealed class OverlayAction {
     // NOVAS AÇÕES ADICIONADAS
     data object ToggleServer : OverlayAction()
     data object OpenApp : OverlayAction()
+    data object ScanLogs : OverlayAction()
+    data object CloseLogsDialog : OverlayAction()
 }
 
 @Composable
@@ -651,6 +704,7 @@ fun OverlayWidget(
     debugPkgName: String = "",
     debugEventNames: List<String> = emptyList(),
     isDebugEnabled: Boolean = false,
+    scannedLogs: String? = null,
     onAction: (OverlayAction) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -699,10 +753,10 @@ fun OverlayWidget(
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                     Icon(
-                        Icons.Default.QrCode, 
+                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_launcher_foreground), 
                         contentDescription = "Menu", 
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(30.dp)
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(36.dp)
                     )
                     
                     // Connection indicator badge (Indicador de conexão)
@@ -870,7 +924,7 @@ fun OverlayWidget(
                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(modifier = Modifier.weight(1.5f), contentAlignment = Alignment.Center) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                             MenuActionButton(
                                 icon = if (isServerRunning) Icons.Default.WifiTetheringOff else Icons.Default.WifiTethering,
                                 label = if (isServerRunning) "Parar Server" else "Ligar Server",
@@ -878,7 +932,7 @@ fun OverlayWidget(
                                 onClick = { onAction(OverlayAction.ToggleServer) }
                             )
                         }
-                        Box(modifier = Modifier.weight(1.5f), contentAlignment = Alignment.Center) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                             MenuActionButton(
                                 icon = Icons.Default.DirectionsCar,
                                 label = "Abrir App",
@@ -887,6 +941,18 @@ fun OverlayWidget(
                                     expanded = false
                                     onAction(OverlayAction.ExpandChanged(false))
                                     onAction(OverlayAction.OpenApp) 
+                                }
+                            )
+                        }
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            MenuActionButton(
+                                icon = Icons.Default.List,
+                                label = "Ver Logs",
+                                tint = Color(0xFF9575CD),
+                                onClick = { 
+                                    expanded = false
+                                    onAction(OverlayAction.ExpandChanged(false))
+                                    onAction(OverlayAction.ScanLogs)
                                 }
                             )
                         }
@@ -914,6 +980,56 @@ fun OverlayWidget(
                             color = Color(0xFF81C784),
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Normal
+                        )
+                    }
+                }
+            }
+        }
+
+        // Logs Dialog
+        if (scannedLogs != null) {
+            Surface(
+                color = Color(0xF21C1C26),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(0.9f)
+                    .height(300.dp)
+                    .border(1.dp, menuBorderColor, RoundedCornerShape(16.dp))
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = "Textos Capturados",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        IconButton(
+                            onClick = { onAction(OverlayAction.CloseLogsDialog) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Fechar", tint = Color.White)
+                        }
+                    }
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = scannedLogs,
+                            color = Color(0xFFE0E0E0),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
                         )
                     }
                 }
