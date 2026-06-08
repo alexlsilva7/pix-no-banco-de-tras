@@ -21,6 +21,7 @@ import android.view.WindowManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -92,6 +93,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
 import com.example.ui.theme.MyApplicationTheme
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 
 
 import com.example.utils.*
@@ -121,6 +126,9 @@ fun PassengerScreen() {
     val dpm = remember { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
     val adminComponent = remember { ComponentName(context, MyDeviceAdminReceiver::class.java) }
     var isAdminActive by remember { mutableStateOf(dpm.isAdminActive(adminComponent)) }
+    
+    val passengerOrientation = remember { prefs.getString("PASSENGER_ORIENTATION", "LANDSCAPE") ?: "LANDSCAPE" }
+    val displayMode = remember { prefs.getString("PASSENGER_DISPLAY_MODE", "FULLSCREEN") ?: "FULLSCREEN" }
 
     val adminLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
@@ -128,10 +136,14 @@ fun PassengerScreen() {
         isAdminActive = dpm.isAdminActive(adminComponent)
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(passengerOrientation) {
         val activity = context.getActivity()
         val originalOrientation = activity?.requestedOrientation
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        activity?.requestedOrientation = when (passengerOrientation) {
+            "PORTRAIT" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            "AUTO" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
         
         val window = activity?.window
         if (window != null) {
@@ -391,7 +403,46 @@ fun PassengerScreen() {
                             }
                         }
                         
-                        if (command == "CMD_EXIBIR_PIX" || command == "CMD_EXIBIR_MEU_PIX" || command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
+                        if (displayMode == "PARTIAL") {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                    val screenW = constraints.maxWidth.toFloat()
+                                    val screenH = constraints.maxHeight.toFloat()
+                                    val density = LocalDensity.current.density
+                                    
+                                    val relX = prefs.getFloat("PARTIAL_QR_X", 0.1f)
+                                    val relY = prefs.getFloat("PARTIAL_QR_Y", 0.1f)
+                                    val relW = prefs.getFloat("PARTIAL_QR_WIDTH", 0.35f)
+                                    val relH = prefs.getFloat("PARTIAL_QR_HEIGHT", 0.5f)
+                                    
+                                    val absX = relX * screenW
+                                    val absY = relY * screenH
+                                    val absW = relW * screenW
+                                    val absH = relH * screenH
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
+                                            .size((absW / density).dp, (absH / density).dp)
+                                            .background(Color.White)
+                                            .padding(8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (qrBitmap != null) {
+                                            Image(
+                                                bitmap = qrBitmap.asImageBitmap(),
+                                                contentDescription = "QR Code Pix",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        } else {
+                                            Text("Erro ao gerar QR Code", color = Color.Red)
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            if (command == "CMD_EXIBIR_PIX" || command == "CMD_EXIBIR_MEU_PIX" || command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -651,18 +702,52 @@ fun PassengerScreen() {
                                 }
                             }
                         }
+                        }
                     }
                 }
                 "IMAGE" -> {
                     val currentImage = receivedImage
                     if (currentImage != null) {
                         val bitmap = BitmapFactory.decodeByteArray(currentImage, 0, currentImage.size)
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "QR Code Pix",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
-                        )
+                        if (displayMode == "PARTIAL") {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                    val screenW = constraints.maxWidth.toFloat()
+                                    val screenH = constraints.maxHeight.toFloat()
+                                    val density = LocalDensity.current.density
+                                    val relX = prefs.getFloat("PARTIAL_QR_X", 0.1f)
+                                    val relY = prefs.getFloat("PARTIAL_QR_Y", 0.1f)
+                                    val relW = prefs.getFloat("PARTIAL_QR_WIDTH", 0.35f)
+                                    val relH = prefs.getFloat("PARTIAL_QR_HEIGHT", 0.5f)
+                                    val absX = relX * screenW
+                                    val absY = relY * screenH
+                                    val absW = relW * screenW
+                                    val absH = relH * screenH
+                                    Box(
+                                        modifier = Modifier
+                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
+                                            .size((absW / density).dp, (absH / density).dp)
+                                            .background(Color.White)
+                                            .padding(8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Image(
+                                            bitmap = bitmap.asImageBitmap(),
+                                            contentDescription = "QR Code Pix",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Fit
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "QR Code Pix",
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
                     }
                 }
                 "WAITING" -> {

@@ -38,7 +38,6 @@
         <activity android:name=".PixActivity"
             android:exported="false"
             android:launchMode="singleTop"
-            android:screenOrientation="landscape"
             android:theme="@style/Theme.MyApplication" />
             
         <service android:name=".OverlayService"

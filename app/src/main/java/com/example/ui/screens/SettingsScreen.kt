@@ -100,7 +100,7 @@ import com.example.OverlayService
 
 @Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
     
@@ -113,6 +113,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     var debugMonitorEnabled by remember { mutableStateOf(prefs.getBoolean("DEBUG_MONITOR_ENABLED", false)) }
     var autoScanInterval by remember { mutableStateOf(prefs.getString("AUTO_SCAN_INTERVAL", "10") ?: "10") }
     var qrScaleFactor by remember { mutableStateOf(prefs.getFloat("QR_SCALE_FACTOR", 0.5f)) }
+    
+    var passengerOrientation by remember { mutableStateOf(prefs.getString("PASSENGER_ORIENTATION", "LANDSCAPE") ?: "LANDSCAPE") }
+    var displayMode by remember { mutableStateOf(prefs.getString("PASSENGER_DISPLAY_MODE", "FULLSCREEN") ?: "FULLSCREEN") }
     
     val dpm = remember { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
     val adminComponent = remember { ComponentName(context, MyDeviceAdminReceiver::class.java) }
@@ -198,6 +201,87 @@ fun SettingsScreen(onBack: () -> Unit) {
                             keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                         )
                     )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Exibição da Tela (Passageiro)",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    // Orientation
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Orientação da Tela", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val orientations = listOf("LANDSCAPE" to "Paisagem", "PORTRAIT" to "Retrato", "AUTO" to "Auto")
+                            orientations.forEach { (value, label) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        passengerOrientation = value
+                                        prefs.edit().putString("PASSENGER_ORIENTATION", value).apply()
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (passengerOrientation == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (passengerOrientation == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(label, color = if (passengerOrientation == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Display Mode
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Abertura do QR Code", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val modes = listOf("FULLSCREEN" to "Tela Inteira", "PARTIAL" to "Parte da Tela")
+                            modes.forEach { (value, label) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        displayMode = value
+                                        prefs.edit().putString("PASSENGER_DISPLAY_MODE", value).apply()
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (displayMode == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (displayMode == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(label, color = if (displayMode == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (displayMode == "PARTIAL") {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onNavigateToPartialSetup,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Configurar Posição do QR Code")
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(

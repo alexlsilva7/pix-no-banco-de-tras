@@ -103,6 +103,7 @@ const val PassengerRoute = "passenger"
 const val SettingsRoute = "settings"
 const val MyPixQrCodeRoute = "my_pix_qr_code"
 const val MyWifiQrCodeRoute = "my_wifi_qr_code"
+const val PartialSetupRoute = "partial_setup"
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -188,7 +189,13 @@ class MainActivity : ComponentActivity() {
               PassengerScreen()
             }
             composable(SettingsRoute) {
-              SettingsScreen(onBack = { navController.popBackStack() })
+              SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToPartialSetup = { navController.navigate(PartialSetupRoute) }
+              )
+            }
+            composable(PartialSetupRoute) {
+              PartialDisplaySetupScreen(onBack = { navController.popBackStack() })
             }
             composable(MyPixQrCodeRoute) {
               MyPixQrCodeScreen(onBack = { navController.popBackStack() })
