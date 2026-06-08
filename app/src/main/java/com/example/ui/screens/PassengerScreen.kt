@@ -51,6 +51,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.filled.Delete
@@ -420,24 +421,59 @@ fun PassengerScreen() {
                                     val absW = relW * screenW
                                     val absH = relH * screenH
                                     
-                                    Box(
+                                    Column(
                                         modifier = Modifier
-                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
-                                            .size((absW / density).dp, (absH / density).dp)
-                                            .background(Color.White)
-                                            .padding(8.dp),
-                                        contentAlignment = Alignment.Center
+                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) },
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        if (qrBitmap != null) {
-                                            Image(
-                                                bitmap = qrBitmap.asImageBitmap(),
-                                                contentDescription = "QR Code Pix",
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = ContentScale.Fit
-                                            )
-                                        } else {
-                                            Text("Erro ao gerar QR Code", color = Color.Red)
+                                        Box(
+                                            modifier = Modifier
+                                                .size((absW / density).dp, (absH / density).dp)
+                                                .background(Color.White)
+                                                .padding(8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (qrBitmap != null) {
+                                                Image(
+                                                    bitmap = qrBitmap.asImageBitmap(),
+                                                    contentDescription = "QR Code Pix",
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    contentScale = ContentScale.Fit
+                                                )
+                                            } else {
+                                                Text("Erro ao gerar QR Code", color = Color.Red)
+                                            }
                                         }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        
+                                        val descriptionText = when {
+                                            command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO" -> {
+                                                "Wi-Fi: AL€X | Senha: qwertyuiop"
+                                            }
+                                            command == "CMD_EXIBIR_MEU_PIX" -> {
+                                                "Pix: Alex Lopes da Silva | Chave: 87981504902"
+                                            }
+                                            command == "CMD_EXIBIR_PIX" -> {
+                                                val pixData = parsePixPayload(currentText)
+                                                if (pixData.amount.isNotEmpty()) {
+                                                    "Pix: ${pixData.name} | R$ ${pixData.amount}"
+                                                } else {
+                                                    "Pix: ${pixData.name}"
+                                                }
+                                            }
+                                            else -> {
+                                                "Escaneie o QR Code"
+                                            }
+                                        }
+                                        
+                                        Text(
+                                            text = descriptionText,
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = (screenW / density).dp)
+                                        )
                                     }
                                 }
                             }
@@ -723,19 +759,34 @@ fun PassengerScreen() {
                                     val absY = relY * screenH
                                     val absW = relW * screenW
                                     val absH = relH * screenH
-                                    Box(
+                                    
+                                    Column(
                                         modifier = Modifier
-                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
-                                            .size((absW / density).dp, (absH / density).dp)
-                                            .background(Color.White)
-                                            .padding(8.dp),
-                                        contentAlignment = Alignment.Center
+                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) },
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Image(
-                                            bitmap = bitmap.asImageBitmap(),
-                                            contentDescription = "QR Code Pix",
-                                            modifier = Modifier.fillMaxSize(),
-                                            contentScale = ContentScale.Fit
+                                        Box(
+                                            modifier = Modifier
+                                                .size((absW / density).dp, (absH / density).dp)
+                                                .background(Color.White)
+                                                .padding(8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Image(
+                                                bitmap = bitmap.asImageBitmap(),
+                                                contentDescription = "QR Code Pix",
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "QR Code extraído da tela",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = (screenW / density).dp)
                                         )
                                     }
                                 }
