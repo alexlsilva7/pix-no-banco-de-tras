@@ -91,6 +91,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MyApplicationTheme
 
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
+
 class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
 
     // Vasculha a tela lendo textos do Android de forma leve
@@ -123,8 +126,8 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         }
     }
 
-    // Extrai o QR Code de um Bitmap usando ZXing
-    private fun decodeQrCode(bitmap: Bitmap): String? {
+    // EXTRAÇÃO DE QR CODE - MÉTODO ZXING (Legado)
+    private fun decodeQrCodeZxing(bitmap: Bitmap): String? {
         return try {
             val width = bitmap.width
             val height = bitmap.height
@@ -146,6 +149,56 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    // EXTRAÇÃO DE QR CODE - MÉTODO GOOGLE ML KIT (Alta Tolerância e Velocidade)
+    private suspend fun decodeQrCodeMlKit(bitmap: Bitmap): String? = suspendCancellableCoroutine { continuation ->
+        try {
+            val image = com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap, 0)
+            val options = com.google.mlkit.vision.barcode.BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                .build()
+            val scanner = com.google.mlkit.vision.barcode.BarcodeScanning.getClient(options)
+
+            scanner.process(image)
+                .addOnSuccessListener { barcodes ->
+                    val qrCode = barcodes.firstOrNull { it.rawValue != null }?.rawValue
+                    if (continuation.isActive) continuation.resume(qrCode)
+                }
+                .addOnFailureListener { e ->
+                    if (continuation.isActive) continuation.resume(null)
+                }
+                .addOnCompleteListener {
+                    scanner.close()
+                }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            if (continuation.isActive) continuation.resume(null)
+        }
+    }
+
+    // LÓGICA HÍBRIDA DE EXTRAÇÃO COM SISTEMA DE FALLBACK AUTOMÁTICO
+    private suspend fun decodeQrCodeWithFallback(bitmap: Bitmap): String? {
+        val primary = qrEngineFlow.value
+        return if (primary == "MLKIT") {
+            val mlkitResult = decodeQrCodeMlKit(bitmap)
+            if (mlkitResult != null) {
+                Log.d("PixDebugScanner", "QR Code decodificado pelo mecanismo primário (Google ML Kit)")
+                mlkitResult
+            } else {
+                Log.d("PixDebugScanner", "ML Kit falhou. Iniciando fallback para ZXing...")
+                decodeQrCodeZxing(bitmap)
+            }
+        } else {
+            val zxingResult = decodeQrCodeZxing(bitmap)
+            if (zxingResult != null) {
+                Log.d("PixDebugScanner", "QR Code decodificado pelo mecanismo primário (ZXing)")
+                zxingResult
+            } else {
+                Log.d("PixDebugScanner", "ZXing falhou. Iniciando fallback para Google ML Kit...")
+                decodeQrCodeMlKit(bitmap)
+            }
         }
     }
 
@@ -240,6 +293,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
     private val isDebugMonitorEnabledFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
     private val autoScanIntervalFlow = kotlinx.coroutines.flow.MutableStateFlow(10)
     private val qrScaleFactorFlow = kotlinx.coroutines.flow.MutableStateFlow(0.5f)
+    private val qrEngineFlow = kotlinx.coroutines.flow.MutableStateFlow("MLKIT")
     private lateinit var prefsListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener
     private var autoScanJob: Job? = null
     private var lastQrCodeFoundTime: Long = 0
@@ -288,6 +342,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         isDebugMonitorEnabledFlow.value = prefs.getBoolean("DEBUG_MONITOR_ENABLED", false)
         autoScanIntervalFlow.value = (prefs.getString("AUTO_SCAN_INTERVAL", "10") ?: "10").toIntOrNull() ?: 10
         qrScaleFactorFlow.value = prefs.getFloat("QR_SCALE_FACTOR", 0.5f)
+        qrEngineFlow.value = prefs.getString("QR_ENGINE", "MLKIT") ?: "MLKIT"
 
         prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
             when (key) {
@@ -295,6 +350,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 "DEBUG_MONITOR_ENABLED" -> isDebugMonitorEnabledFlow.value = sharedPreferences?.getBoolean(key, false) ?: false
                 "AUTO_SCAN_INTERVAL" -> autoScanIntervalFlow.value = (sharedPreferences?.getString(key, "10") ?: "10").toIntOrNull() ?: 10
                 "QR_SCALE_FACTOR" -> qrScaleFactorFlow.value = sharedPreferences?.getFloat(key, 0.5f) ?: 0.5f
+                "QR_ENGINE" -> qrEngineFlow.value = sharedPreferences?.getString(key, "MLKIT") ?: "MLKIT"
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -355,7 +411,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             setContent {
                 val connectedClientsList by TcpServer.connectedClients.collectAsState()
                 val passengerBattery by TcpServer.clientBatteryState.collectAsState()
-                val isServerRunning by TcpServer.isServerRunningState.collectAsState() // <-- ADICIONADO
+                val isServerRunning by TcpServer.isServerRunningState.collectAsState()
                 val autoScanState by isAutoScanEnabled.collectAsState()
                 val autoScanPausedState by isAutoScanPaused.collectAsState()
                 val toastMsg by overlayToastMessage.collectAsState()
@@ -364,11 +420,13 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 val isDebugEnabled by isDebugMonitorEnabledFlow.collectAsState()
                 val scannedLogs by scannedLogsFlow.collectAsState()
                 
+                // REVERTIDO: Removido coletas de ping e métricas extras do TcpServer
+                
                 MyApplicationTheme {
                     OverlayWidget(
                         connectedClients = connectedClientsList.size,
                         passengerBattery = passengerBattery,
-                        isServerRunning = isServerRunning, // <-- ADICIONADO
+                        isServerRunning = isServerRunning,
                         isAutoScanEnabled = autoScanState,
                         isAutoScanPaused = autoScanPausedState,
                         toastMessage = toastMsg,
@@ -434,7 +492,6 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                         TcpServer.sendCommandAndText("CMD_EXIBIR_WIFI", wifiPayload)
                                     }
                                 }
-                                // NOVAS AÇÕES TRATADAS ABAIXO
                                 is OverlayAction.ToggleServer -> {
                                     scope.launch {
                                         if (TcpServer.isRunning) {
@@ -569,49 +626,47 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 takeScreenshot(android.view.Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
                     override fun onSuccess(screenshotResult: AccessibilityService.ScreenshotResult) {
                         timeoutJob.cancel()
-                        try {
-                            val hardwareBuffer = screenshotResult.hardwareBuffer
-                            val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshotResult.colorSpace)
-                                ?.copy(Bitmap.Config.ARGB_8888, false)
-                            hardwareBuffer.close()
+                        scope.launch(Dispatchers.Default) {
+                            try {
+                                val hardwareBuffer = screenshotResult.hardwareBuffer
+                                val bitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshotResult.colorSpace)
+                                    ?.copy(Bitmap.Config.ARGB_8888, false)
+                                hardwareBuffer.close()
 
-                            if (bitmap != null) {
-                                // Tenta decodificar o Bitmap no tamanho original primeiro
-                                var qrText = decodeQrCode(bitmap)
-                                
-                                // Fallback: Se falhou, aplica o scaleFactor dinâmico configurado pelo usuário
-                                if (qrText == null) {
-                                    val scaleFactor = qrScaleFactorFlow.value
-                                    if (scaleFactor < 1.0f) {
-                                        val scaledBitmap = Bitmap.createScaledBitmap(
-                                            bitmap,
-                                            (bitmap.width * scaleFactor).toInt(),
-                                            (bitmap.height * scaleFactor).toInt(),
-                                            false
-                                        )
-                                        qrText = decodeQrCode(scaledBitmap)
-                                        scaledBitmap.recycle()
-                                    }
-                                }
-                                bitmap.recycle()
-
-                                if (qrText != null) {
-                                    // NOTIFICAR MOTORISTA COM BIPE E VIBRAÇÃO CURTA
-                                    try {
-                                        val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                            vibrator.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-                                        } else {
-                                            @Suppress("DEPRECATION")
-                                            vibrator.vibrate(120)
+                                if (bitmap != null) {
+                                    // Processamento com fallback e prioridade configurada
+                                    var qrText = decodeQrCodeWithFallback(bitmap)
+                                    
+                                    if (qrText == null) {
+                                        val scaleFactor = qrScaleFactorFlow.value
+                                        if (scaleFactor < 1.0f) {
+                                            val scaledBitmap = Bitmap.createScaledBitmap(
+                                                bitmap,
+                                                (bitmap.width * scaleFactor).toInt(),
+                                                (bitmap.height * scaleFactor).toInt(),
+                                                false
+                                            )
+                                            qrText = decodeQrCodeWithFallback(scaledBitmap)
+                                            scaledBitmap.recycle()
                                         }
-                                        val toneG = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
-                                        toneG.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 100)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
                                     }
+                                    bitmap.recycle()
 
-                                    scope.launch {
+                                    if (qrText != null) {
+                                        try {
+                                            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                vibrator.vibrate(android.os.VibrationEffect.createOneShot(120, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                                            } else {
+                                                @Suppress("DEPRECATION")
+                                                vibrator.vibrate(120)
+                                            }
+                                            val toneG = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
+                                            toneG.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 100)
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                        }
+
                                         withContext(Dispatchers.Main) {
                                             if (!isSilent && ::composeView.isInitialized) {
                                                 composeView.visibility = android.view.View.VISIBLE
@@ -624,24 +679,22 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                                 showOverlayToast("QR Code detectado automaticamente!")
                                             }
                                         }
-                                        withContext(Dispatchers.IO) {
-                                            TcpServer.sendCommandAndText("CMD_EXIBIR_PIX", qrText)
+                                        TcpServer.sendCommandAndText("CMD_EXIBIR_PIX", qrText)
+                                    } else {
+                                        withContext(Dispatchers.Main) {
+                                            if (!isSilent && ::composeView.isInitialized) {
+                                                composeView.visibility = android.view.View.VISIBLE
+                                            }
+                                            if (!isSilent) showOverlayToast("Nenhum QR Code encontrado na tela.")
                                         }
                                     }
                                 } else {
-                                    scope.launch(Dispatchers.Main) {
-                                        if (!isSilent && ::composeView.isInitialized) {
-                                            composeView.visibility = android.view.View.VISIBLE
-                                        }
-                                        if (!isSilent) showOverlayToast("Nenhum QR Code encontrado na tela.")
-                                    }
+                                    restoreViewAndShowError(isSilent)
                                 }
-                            } else {
-                                restoreViewAndShowError(isSilent)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                restoreViewAndShowError(isSilent, "Erro ao processar imagem: ${e.message}")
                             }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            restoreViewAndShowError(isSilent, "Erro ao processar imagem: ${e.message}")
                         }
                     }
 
@@ -709,14 +762,13 @@ fun OverlayWidget(
 ) {
     var expanded by remember { mutableStateOf(false) }
     
-    // Gradiente escuro premium para o container
     val containerGradient = Brush.verticalGradient(
         colors = listOf(
-            Color(0xF21C1C26), // 95% de opacidade escuro azulado/cinza
+            Color(0xF21C1C26),
             Color(0xF212121A)
         )
     )
-    val menuBorderColor = Color(0x22FFFFFF) // Borda branca extremamente sutil (vidro fosco)
+    val menuBorderColor = Color(0x22FFFFFF)
 
     Column(
         horizontalAlignment = Alignment.Start
@@ -725,7 +777,6 @@ fun OverlayWidget(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(16.dp)
         ) {
-            // Main Bubble (Bolha Flutuante)
             Surface(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primaryContainer,
@@ -747,7 +798,7 @@ fun OverlayWidget(
                         if (isAutoScanEnabled && isAutoScanPaused) Color(0xFFFFEB3B) 
                         else if (isAutoScanEnabled) Color(0xFF2196F3) 
                         else if (connectedClients > 0) Color(0xFF4CAF50) 
-                        else Color(0x33FFFFFF), // Borda cinza clara sutil quando ocioso
+                        else Color(0x33FFFFFF),
                         CircleShape
                     )
             ) {
@@ -759,7 +810,6 @@ fun OverlayWidget(
                         modifier = Modifier.size(36.dp)
                     )
                     
-                    // Connection indicator badge (Indicador de conexão)
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -779,24 +829,23 @@ fun OverlayWidget(
                 }
             }
 
-            // Expanded Menu (Menu Expandido Lateral)
             if (expanded) {
                 Column(
                     modifier = Modifier
                         .padding(start = 12.dp)
-                        .width(270.dp) // Largura fixa ideal para colunas perfeitamente alinhadas
+                        .width(300.dp)
                         .background(containerGradient, RoundedCornerShape(24.dp))
                         .border(1.dp, menuBorderColor, RoundedCornerShape(24.dp))
                         .padding(horizontal = 12.dp, vertical = 16.dp),
                     verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // NOVO: Mostrador de bateria do passageiro
+                    // REVERTIDO: Exibição apenas da bateria tradicional do passageiro
                     if (passengerBattery >= 0) {
                         val batteryColor = when {
-                            passengerBattery <= 20 -> Color(0xFFEF5350) // Vermelho
-                            passengerBattery <= 50 -> Color(0xFFFFB74D) // Laranja
-                            else -> Color(0xFF81C784) // Verde
+                            passengerBattery <= 20 -> Color(0xFFEF5350)
+                            passengerBattery <= 50 -> Color(0xFFFFB74D)
+                            else -> Color(0xFF81C784)
                         }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -813,148 +862,145 @@ fun OverlayWidget(
                         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
                     }
 
-                    // Linha de Cima
-                    Row(
+                    // 1. RECURSOS DE APOIO NO TOPO (Estrutura de 4 colunas)
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.Autorenew,
-                                label = if (isAutoScanEnabled) "Parar Auto" else "Auto Scan",
-                                tint = if (isAutoScanEnabled) Color(0xFFE57373) else Color(0xFF64B5F6),
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.ToggleAutoScan) }
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuActionButton(
+                                    icon = Icons.Default.Autorenew,
+                                    label = if (isAutoScanEnabled) "Parar Auto" else "Auto Scan",
+                                    tint = if (isAutoScanEnabled) Color(0xFFE57373) else Color(0xFF64B5F6),
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.ToggleAutoScan) }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuActionButton(
+                                    icon = Icons.Default.DirectionsCar,
+                                    label = "Bem-Vindo",
+                                    tint = Color(0xFF4DD0E1),
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWelcome) }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuActionButton(
+                                    icon = Icons.Default.Favorite,
+                                    label = "Obrigado",
+                                    tint = Color(0xFFF06292),
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendThanks) }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuActionButton(
+                                    icon = Icons.Default.Delete,
+                                    label = "Limpar",
+                                    tint = Color(0xFFFFB74D),
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.ClearScreen) }
+                                )
+                            }
                         }
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.CameraAlt,
-                                label = "Capturar",
-                                tint = Color(0xFF64B5F6),
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Capture) }
-                            )
-                        }
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.Payments,
-                                label = "Meu Pix",
-                                tint = Color(0xFF81C784),
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendMyPix) }
-                            )
-                        }
-                    }
-                    
-                    // Divisor 1
-                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
-                    
-                    // Linha do Meio
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.Wifi,
-                                label = "Wi-Fi",
-                                tint = Color(0xFFBA68C8),
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWifi) }
-                            )
-                        }
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.DirectionsCar,
-                                label = "Bem-Vindo",
-                                tint = Color(0xFF4DD0E1),
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWelcome) }
-                            )
-                        }
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.Favorite,
-                                label = "Obrigado",
-                                tint = Color(0xFFF06292),
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendThanks) }
-                            )
-                        }
-                    }
-                    
-                    // Divisor 2
-                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
-                    
-                    // Linha de Baixo
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.Delete,
-                                label = "Limpar",
-                                tint = Color(0xFFFFB74D),
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.ClearScreen) }
-                            )
-                        }
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.PhonelinkErase,
-                                label = "Apagar",
-                                tint = Color(0xFFE57373),
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.TurnOffScreen) }
-                            )
-                        }
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.Close,
-                                label = "Fechar",
-                                tint = Color.White,
-                                onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Close) }
-                            )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuActionButton(
+                                    icon = Icons.Default.DirectionsCar,
+                                    label = "Abrir App",
+                                    tint = Color(0xFF4DD0E1),
+                                    onClick = { 
+                                        expanded = false
+                                        onAction(OverlayAction.ExpandChanged(false))
+                                        onAction(OverlayAction.OpenApp) 
+                                    }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuActionButton(
+                                    icon = Icons.Default.List,
+                                    label = "Ver Logs",
+                                    tint = Color(0xFF9575CD),
+                                    onClick = { 
+                                        expanded = false
+                                        onAction(OverlayAction.ExpandChanged(false))
+                                        onAction(OverlayAction.ScanLogs)
+                                    }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuActionButton(
+                                    icon = if (isServerRunning) Icons.Default.WifiTetheringOff else Icons.Default.WifiTethering,
+                                    label = if (isServerRunning) "Parar Ser." else "Ligar Ser.",
+                                    tint = if (isServerRunning) Color(0xFFE57373) else Color(0xFF81C784),
+                                    onClick = { onAction(OverlayAction.ToggleServer) }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                MenuActionButton(
+                                    icon = Icons.Default.Close,
+                                    label = "Fechar",
+                                    tint = Color.White,
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Close) }
+                                )
+                            }
                         }
                     }
 
-                    // Divisor 3 (Nova linha)
                     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.08f)))
-                    
-                    // Linha de Gerenciamento do App (Servidor e Atalho do App)
-                    Row(
+
+                    // 2. BOTÕES PRINCIPAIS DE DESTAQUE EMBAIXO (Estrutura Horizontal 2x2 Ampliada)
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = if (isServerRunning) Icons.Default.WifiTetheringOff else Icons.Default.WifiTethering,
-                                label = if (isServerRunning) "Parar Server" else "Ligar Server",
-                                tint = if (isServerRunning) Color(0xFFE57373) else Color(0xFF81C784),
-                                onClick = { onAction(OverlayAction.ToggleServer) }
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                LargeMenuActionButton(
+                                    icon = Icons.Default.CameraAlt,
+                                    label = "Capturar",
+                                    tint = Color(0xFF64B5F6),
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.Capture) }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                LargeMenuActionButton(
+                                    icon = Icons.Default.Payments,
+                                    label = "Meu Pix",
+                                    tint = Color(0xFF81C784),
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendMyPix) }
+                                )
+                            }
                         }
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.DirectionsCar,
-                                label = "Abrir App",
-                                tint = Color(0xFF4DD0E1),
-                                onClick = { 
-                                    expanded = false
-                                    onAction(OverlayAction.ExpandChanged(false))
-                                    onAction(OverlayAction.OpenApp) 
-                                }
-                            )
-                        }
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            MenuActionButton(
-                                icon = Icons.Default.List,
-                                label = "Ver Logs",
-                                tint = Color(0xFF9575CD),
-                                onClick = { 
-                                    expanded = false
-                                    onAction(OverlayAction.ExpandChanged(false))
-                                    onAction(OverlayAction.ScanLogs)
-                                }
-                            )
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                LargeMenuActionButton(
+                                    icon = Icons.Default.Wifi,
+                                    label = "Wi-Fi",
+                                    tint = Color(0xFFBA68C8),
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.SendWifi) }
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f)) {
+                                LargeMenuActionButton(
+                                    icon = Icons.Default.PhonelinkErase,
+                                    label = "Apagar",
+                                    tint = Color(0xFFE57373),
+                                    onClick = { expanded = false; onAction(OverlayAction.ExpandChanged(false)); onAction(OverlayAction.TurnOffScreen) }
+                                )
+                            }
                         }
                     }
                 }
@@ -1067,37 +1113,47 @@ private fun MenuActionButton(
     tint: Color,
     onClick: () -> Unit
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Box(
+        contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .height(64.dp)
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp)
+            .background(tint.copy(alpha = 0.12f))
+            .border(1.dp, tint.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
     ) {
-        // Bloco do ícone estilizado (estilo tile de painel moderno)
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(46.dp)
-                .background(tint.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
-                .border(1.dp, tint.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
-        ) {
-            Icon(
-                imageVector = icon, 
-                contentDescription = label, 
-                tint = tint,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        androidx.compose.material3.Text(
-            text = label,
-            color = Color(0xFFE0E0E0),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+        Icon(
+            imageVector = icon, 
+            contentDescription = label, 
+            tint = tint,
+            modifier = Modifier.size(36.dp)
+        )
+    }
+}
+
+@Composable
+private fun LargeMenuActionButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+            .background(tint.copy(alpha = 0.1f))
+            .border(1.dp, tint.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+    ) {
+        Icon(
+            imageVector = icon, 
+            contentDescription = label, 
+            tint = tint,
+            modifier = Modifier.size(48.dp)
         )
     }
 }

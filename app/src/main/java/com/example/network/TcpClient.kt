@@ -45,7 +45,8 @@ object TcpClient {
             while (isRunning) {
                 val cmd = inputStream?.readUTF() ?: break
                 Log.d("TcpClient", "Comando recebido: $cmd")
-                // IGNORAR o PING para não sobrescrever o estado da UI atual
+                
+                // REVERTIDO: IGNORAR o PING para não sobrescrever o estado da UI atual
                 if (cmd != "CMD_PING") {
                     _command.value = cmd
                 }
@@ -97,4 +98,3 @@ object TcpClient {
         }
     }
 }
-

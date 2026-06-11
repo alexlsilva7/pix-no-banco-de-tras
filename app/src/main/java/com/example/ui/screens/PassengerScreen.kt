@@ -25,6 +25,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
@@ -173,6 +176,7 @@ fun PassengerScreen() {
         }
     }
 
+    // REVERTIDO: Voltamos para a escuta de bateria tradicional de 60 segundos
     fun getBatteryPercentage(ctx: Context): Int {
         val batteryStatus = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
@@ -187,7 +191,7 @@ fun PassengerScreen() {
                 if (pct >= 0) {
                     TcpClient.sendTelemetry("TELEMETRY_BATTERY:$pct")
                 }
-                kotlinx.coroutines.delay(60000L) // Atualiza a cada 60 segundos
+                kotlinx.coroutines.delay(60000L) // Atualiza a cada 60 segundos de forma leve
             }
         }
     }
@@ -246,13 +250,11 @@ fun PassengerScreen() {
                 TcpClient.clearImage()
                 
                 val offScreenBehavior = prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK"
-                if (offScreenBehavior == "LOCK") {
-                    if (dpm.isAdminActive(adminComponent)) {
-                        try {
-                            dpm.lockNow()
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
+                if (offScreenBehavior == "LOCK" && dpm.isAdminActive(adminComponent)) {
+                    try {
+                        dpm.lockNow()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                     context.getActivity()?.let { activity ->
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -279,16 +281,65 @@ fun PassengerScreen() {
         }
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var resumeTrigger by remember { mutableStateOf(0) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                resumeTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val isWaitingState = isConnected && receivedImage == null && qrCodeText == null && command != "CMD_APAGAR_TELA" && command != "CMD_EXIBIR_OBRIGADO"
+
+    LaunchedEffect(isWaitingState, resumeTrigger) {
+        if (isWaitingState) {
+            kotlinx.coroutines.delay(10000L)
+            val offScreenBehavior = prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK"
+            if (offScreenBehavior == "LOCK" && dpm.isAdminActive(adminComponent)) {
+                try {
+                    dpm.lockNow()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                context.getActivity()?.let { activity ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        activity.setTurnScreenOn(false)
+                        activity.setShowWhenLocked(false)
+                    } else {
+                        activity.window.clearFlags(
+                            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                        )
+                    }
+                    activity.window.clearFlags(
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                    )
+                    val lp = activity.window.attributes
+                    lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                    activity.window.attributes = lp
+                }
+            } else {
+                context.getActivity()?.moveTaskToBack(true)
+            }
+        }
+    }
+
     LaunchedEffect(command) {
         if (command == "CMD_APAGAR_TELA") {
             val offScreenBehavior = prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK"
-            if (offScreenBehavior == "LOCK") {
-                if (dpm.isAdminActive(adminComponent)) {
-                    try {
-                        dpm.lockNow()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+            if (offScreenBehavior == "LOCK" && dpm.isAdminActive(adminComponent)) {
+                try {
+                    dpm.lockNow()
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
                 context.getActivity()?.let { activity ->
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -359,42 +410,109 @@ fun PassengerScreen() {
                     Box(modifier = Modifier.fillMaxSize())
                 }
                 "OBRIGADO" -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        androidx.compose.foundation.layout.Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Favorite,
-                                contentDescription = "Obrigado",
-                                tint = Color(0xFFF06292),
-                                modifier = Modifier.size(160.dp)
-                            )
-                            Text(
-                                "Obrigado por viajar comigo!",
-                                style = MaterialTheme.typography.displayMedium,
-                                color = Color.White
-                            )
-                            Text(
-                                "Por favor, avalie a corrida com 5 estrelas no aplicativo.",
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = Color.Gray
-                            )
-                            androidx.compose.foundation.layout.Row(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                repeat(5) {
+                    if (displayMode == "PARTIAL") {
+                        // Modo "Parte da Tela" configurado para o "Obrigado"
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val screenW = constraints.maxWidth.toFloat()
+                                val screenH = constraints.maxHeight.toFloat()
+                                val density = LocalDensity.current.density
+                                
+                                val relX = prefs.getFloat("PARTIAL_QR_X", 0.1f)
+                                val relY = prefs.getFloat("PARTIAL_QR_Y", 0.1f)
+                                val relW = prefs.getFloat("PARTIAL_QR_WIDTH", 0.35f)
+                                val relH = prefs.getFloat("PARTIAL_QR_HEIGHT", 0.5f)
+                                
+                                val absX = relX * screenW
+                                val absY = relY * screenH
+                                val absW = relW * screenW
+                                val absH = relH * screenH
+                                
+                                Column(
+                                    modifier = Modifier
+                                        .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
+                                        .size((absW / density).dp, (absH / density).dp)
+                                        .background(Color(0xFF121212), RoundedCornerShape(16.dp))
+                                        .border(1.dp, Color(0xFF23232C), RoundedCornerShape(16.dp))
+                                        .padding(12.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
                                     Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = "Estrela",
-                                        tint = Color(0xFFFFD700),
-                                        modifier = Modifier.size(64.dp)
+                                        imageVector = Icons.Default.Favorite,
+                                        contentDescription = "Obrigado",
+                                        tint = Color(0xFFF06292),
+                                        modifier = Modifier.size(48.dp)
                                     )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "Obrigado!",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "Avalie com 5 estrelas",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    androidx.compose.foundation.layout.Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        repeat(5) {
+                                            Icon(
+                                                imageVector = Icons.Default.Star,
+                                                contentDescription = "Estrela",
+                                                tint = Color(0xFFFFD700),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Modo Tela Cheia
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.foundation.layout.Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = "Obrigado",
+                                    tint = Color(0xFFF06292),
+                                    modifier = Modifier.size(160.dp)
+                                )
+                                Text(
+                                    "Obrigado por viajar comigo!",
+                                    style = MaterialTheme.typography.displayMedium,
+                                    color = Color.White
+                                )
+                                Text(
+                                    "Por favor, avalie a corrida com 5 estrelas no aplicativo.",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    color = Color.Gray
+                                )
+                                androidx.compose.foundation.layout.Row(
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    repeat(5) {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = "Estrela",
+                                            tint = Color(0xFFFFD700),
+                                            modifier = Modifier.size(64.dp)
+                                        )
+                                    }
                                 }
                             }
                         }

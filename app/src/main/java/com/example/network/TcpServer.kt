@@ -31,8 +31,8 @@ object TcpServer {
     private val _clientBatteryState = MutableStateFlow(-1)
     val clientBatteryState: StateFlow<Int> = _clientBatteryState
 
-    // 1. Escopo Dedicado: Sobrevive ao longo da vida do Singleton, 
-    // mas permite cancelar as tarefas filhas a qualquer momento.
+    // REVERTIDO: Removido os fluxos adicionais de telemetria complexa e pings
+
     private val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     suspend fun startServer(port: Int = 8080) = withContext(Dispatchers.IO) {
@@ -43,7 +43,7 @@ object TcpServer {
             _isServerRunningState.value = true
             Log.d("TcpServer", "Servidor iniciado na porta $port")
 
-            // 2. Heartbeat (PING): Inicia apenas quando o servidor liga
+            // Heartbeat silencioso
             serverScope.launch {
                 while (isActive && isRunning) {
                     delay(5000)
@@ -61,19 +61,19 @@ object TcpServer {
                     }
                     Log.d("TcpServer", "Cliente conectado: ${newClient.inetAddress.hostAddress}")
                     
-                    // 3. Listener de Mensagens e Desconexão
                     serverScope.launch {
                         val dis = java.io.DataInputStream(newClient.getInputStream())
                         try {
                             while (isRunning) {
                                 val msg = dis.readUTF()
+                                // REVERTIDO: Ouve apenas a bateria simples tradicional
                                 if (msg.startsWith("TELEMETRY_BATTERY:")) {
                                     val pct = msg.substringAfter("TELEMETRY_BATTERY:").toIntOrNull() ?: -1
                                     _clientBatteryState.value = pct
                                 }
                             }
                         } catch (e: Exception) {
-                            // Cliente desconectou de forma abrupta
+                            // Cliente desconectou
                         } finally {
                             synchronized(clientSockets) {
                                 val index = clientSockets.indexOf(newClient)
@@ -82,7 +82,6 @@ object TcpServer {
                                     outputStreams.removeAt(index)
                                     _connectedClients.value = clientSockets.mapNotNull { it.inetAddress?.hostAddress }
                                 }
-                                // Se não há mais clientes, reseta o estado da bateria
                                 if (clientSockets.isEmpty()) {
                                     _clientBatteryState.value = -1
                                 }
@@ -95,8 +94,6 @@ object TcpServer {
         } catch (e: Exception) {
             Log.e("TcpServer", "Erro no servidor: ${e.message}")
         } finally {
-            // Se o loop principal (accept) for quebrado por alguma exceção na porta,
-            // garantimos que tudo seja desligado corretamente.
             stopServer()
         }
     }
@@ -172,9 +169,6 @@ object TcpServer {
         
         isRunning = false
         _isServerRunningState.value = false
-        
-        // 4. Mata imediatamente as coroutines filhas (o PING e os Listeners)
-        // Isso evita que elas continuem consumindo CPU/Bateria em background
         serverScope.coroutineContext.cancelChildren()
 
         try {
