@@ -131,6 +131,11 @@ fun PassengerScreen() {
     val passengerOrientation = remember { prefs.getString("PASSENGER_ORIENTATION", "LANDSCAPE") ?: "LANDSCAPE" }
     val displayMode = remember { prefs.getString("PASSENGER_DISPLAY_MODE", "FULLSCREEN") ?: "FULLSCREEN" }
 
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val screenWidthDp = configuration.screenWidthDp
+    val useHorizontalLayout = isLandscape && screenWidthDp >= 640
+
     val adminLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) {
@@ -479,265 +484,162 @@ fun PassengerScreen() {
                             }
                         } else {
                             if (command == "CMD_EXIBIR_PIX" || command == "CMD_EXIBIR_MEU_PIX" || command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                androidx.compose.foundation.layout.Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(12.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    // QR Code
-                                    androidx.compose.material3.ElevatedCard(
-                                        modifier = Modifier
-                                            .weight(2f)
-                                            .fillMaxHeight(), // <-- MUDE DE wrapContentHeight PARA fillMaxHeight
-                                        shape = RoundedCornerShape(24.dp),
-                                        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-                                            containerColor = Color.White
-                                        )
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxSize() // <-- MUDE DE fillMaxWidth PARA fillMaxSize
-                                                .padding(0.dp),
-                                            contentAlignment = Alignment.Center
+                                    if (useHorizontalLayout) {
+                                        // Layout Horizontal: Tela Grande (Row)
+                                        androidx.compose.foundation.layout.Row(
+                                            modifier = Modifier.fillMaxWidth().fillMaxHeight().padding(8.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            if (qrBitmap != null) {
-                                                Image(
-                                                    bitmap = qrBitmap.asImageBitmap(),
-                                                    contentDescription = "QR Code Pix",
-                                                    modifier = Modifier.fillMaxSize(), // <-- MUDE DE size(280.dp) PARA fillMaxSize()
-                                                    contentScale = ContentScale.Fit
+                                            androidx.compose.material3.ElevatedCard(
+                                                modifier = Modifier
+                                                    .weight(1.2f)
+                                                    .fillMaxHeight(),
+                                                shape = RoundedCornerShape(24.dp),
+                                                colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                                    containerColor = Color.White
                                                 )
-                                            } else {
-                                                Text("Erro ao gerar QR Code", color = Color.Red)
-                                            }
-                                        }
-                                    }
-
-                                    // Info
-                                    Column(
-                                        modifier = Modifier.weight(1f),
-                                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                                    ) {
-                                        androidx.compose.material3.Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(20.dp),
-                                            colors = androidx.compose.material3.CardDefaults.cardColors(
-                                                containerColor = Color(0xFF1E1E1E)
-                                            )
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.padding(24.dp),
-                                                verticalArrangement = Arrangement.spacedBy(20.dp)
                                             ) {
-                                                if (command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
-                                                    if (command == "CMD_EXIBIR_BEM_VINDO") {
-                                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                            Text(
-                                                                "Bem-Vindo!",
-                                                                style = MaterialTheme.typography.headlineMedium,
-                                                                color = Color(0xFF4DD0E1)
-                                                            )
-                                                            Text(
-                                                                "Fique à vontade e conecte-se à internet.",
-                                                                style = MaterialTheme.typography.bodyLarge,
-                                                                color = Color.Gray
-                                                            )
-                                                        }
-                                                        androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
-                                                    }
-                                                    // Rede Wi-Fi
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(
-                                                            "Rede Wi-Fi",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = MaterialTheme.colorScheme.primary
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .padding(16.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (qrBitmap != null) {
+                                                        Image(
+                                                            bitmap = qrBitmap.asImageBitmap(),
+                                                            contentDescription = "QR Code Pix",
+                                                            modifier = Modifier.fillMaxSize(),
+                                                            contentScale = ContentScale.Fit
                                                         )
-                                                        Text(
-                                                            "AL€X",
-                                                            style = MaterialTheme.typography.titleLarge,
-                                                            color = Color.White
-                                                        )
-                                                    }
-
-                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
-
-                                                    // Senha
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(
-                                                            "Senha",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        SelectionContainer {
-                                                            Text(
-                                                                "qwertyuiop",
-                                                                style = MaterialTheme.typography.titleLarge,
-                                                                color = Color.White
-                                                            )
-                                                        }
-                                                    }
-                                                } else if (command == "CMD_EXIBIR_MEU_PIX") {
-                                                    // Pix Fixo (Meu Pix)
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(
-                                                            "Nome",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        Text(
-                                                            "Alex Lopes da Silva",
-                                                            style = MaterialTheme.typography.titleLarge,
-                                                            color = Color.White
-                                                        )
-                                                    }
-
-                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
-
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(
-                                                            "Instituição",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        Text(
-                                                            "Mercado Pago",
-                                                            style = MaterialTheme.typography.titleLarge,
-                                                            color = Color.White
-                                                        )
-                                                    }
-
-                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
-
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(
-                                                            "Chave Pix",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        SelectionContainer {
-                                                            Text(
-                                                                "87981504902",
-                                                                style = MaterialTheme.typography.titleLarge,
-                                                                color = Color.White
-                                                            )
-                                                        }
-                                                    }
-                                                } else {
-                                                    // Pix Extraído Dinamicamente
-                                                    val pixData = parsePixPayload(currentText)
-                                                    
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(
-                                                            "Nome",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        Text(
-                                                            pixData.name,
-                                                            style = MaterialTheme.typography.titleLarge,
-                                                            color = Color.White
-                                                        )
-                                                    }
-
-                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
-
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(
-                                                            if (pixData.amount.isNotEmpty()) "Valor / Cidade" else "Cidade",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        Text(
-                                                            if (pixData.amount.isNotEmpty()) "R$ ${pixData.amount} - ${pixData.city}" else pixData.city,
-                                                            style = MaterialTheme.typography.titleLarge,
-                                                            color = Color.White
-                                                        )
-                                                    }
-
-                                                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
-
-                                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Text(
-                                                            "Chave Pix",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            color = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        SelectionContainer {
-                                                            Text(
-                                                                pixData.key,
-                                                                style = MaterialTheme.typography.titleLarge,
-                                                                color = Color.White
-                                                            )
-                                                        }
+                                                    } else {
+                                                        Text("Erro ao gerar QR Code", color = Color.Red)
                                                     }
                                                 }
                                             }
-                                        }
 
-                                        // Instruction text
-                                        Text(
-                                            if (command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") "Escaneie o QR Code ao lado para se conectar à rede Wi-Fi." else "Escaneie o QR Code ao lado para realizar o pagamento via Pix.",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Color.Gray,
-                                            modifier = Modifier.padding(horizontal = 8.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            // Generic QR Code (e.g., from screenshot)
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                androidx.compose.foundation.layout.Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    androidx.compose.material3.ElevatedCard(
-                                        modifier = Modifier.weight(1f), // <-- ADICIONE O WEIGHT AQUI PARA ELE PUXAR TODA A ALTURA
-                                        shape = RoundedCornerShape(24.dp),
-                                        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-                                            containerColor = Color.White
-                                        )
-                                    ) {
-                                        Box(
-                                            modifier = Modifier.fillMaxSize().padding(0.dp), // <-- MUDE PARA fillMaxSize
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (qrBitmap != null) {
-                                                Image(
-                                                    bitmap = qrBitmap.asImageBitmap(),
-                                                    contentDescription = "QR Code Genérico",
-                                                    modifier = Modifier.fillMaxSize(), // <-- MUDE DE size(360.dp) PARA fillMaxSize
-                                                    contentScale = ContentScale.Fit
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .fillMaxHeight()
+                                                    .verticalScroll(rememberScrollState()),
+                                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                                            ) {
+                                                PassengerInfoCard(command, currentText)
+                                                
+                                                Text(
+                                                    if (command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") "Escaneie o QR Code ao lado para se conectar à rede Wi-Fi." else "Escaneie o QR Code ao lado para realizar o pagamento via Pix.",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = Color.Gray,
+                                                    modifier = Modifier.padding(horizontal = 8.dp)
                                                 )
-                                            } else {
-                                                Text("Erro ao gerar QR Code", color = Color.Red)
                                             }
                                         }
+                                    } else {
+                                        // Layout Vertical: Tela Pequena (Column com Scroll)
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .verticalScroll(rememberScrollState())
+                                                .padding(16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            androidx.compose.material3.ElevatedCard(
+                                                modifier = Modifier
+                                                    .size(280.dp)
+                                                    .align(Alignment.CenterHorizontally),
+                                                shape = RoundedCornerShape(24.dp),
+                                                colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                                    containerColor = Color.White
+                                                )
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (qrBitmap != null) {
+                                                        Image(
+                                                            bitmap = qrBitmap.asImageBitmap(),
+                                                            contentDescription = "QR Code Pix",
+                                                            modifier = Modifier.fillMaxSize(),
+                                                            contentScale = ContentScale.Fit
+                                                        )
+                                                    } else {
+                                                        Text("Erro ao gerar QR Code", color = Color.Red)
+                                                    }
+                                                }
+                                            }
+
+                                            PassengerInfoCard(command, currentText)
+
+                                            Text(
+                                                if (command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") "Escaneie o QR Code acima para se conectar à rede Wi-Fi." else "Escaneie o QR Code acima para realizar o pagamento via Pix.",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color.Gray,
+                                                modifier = Modifier.padding(horizontal = 8.dp),
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
+                                        }
                                     }
-                                    Text(
-                                        "QR Code extraído da tela",
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        "Escaneie o QR Code acima para visualizar ou pagar.",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = Color.Gray
-                                    )
+                                }
+                            } else {
+                                // QR Code Genérico (e.g. captura de tela)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    androidx.compose.foundation.layout.Column(
+                                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        androidx.compose.material3.ElevatedCard(
+                                            modifier = Modifier.size(280.dp),
+                                            shape = RoundedCornerShape(24.dp),
+                                            colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+                                                containerColor = Color.White
+                                            )
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.fillMaxSize().padding(16.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (qrBitmap != null) {
+                                                    Image(
+                                                        bitmap = qrBitmap.asImageBitmap(),
+                                                        contentDescription = "QR Code Genérico",
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentScale = ContentScale.Fit
+                                                    )
+                                                } else {
+                                                    Text("Erro ao gerar QR Code", color = Color.Red)
+                                                }
+                                            }
+                                        }
+                                        Text(
+                                            "QR Code extraído da tela",
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            "Escaneie o QR Code acima para visualizar ou pagar.",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = Color.Gray,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                    }
                                 }
                             }
-                        }
                         }
                     }
                 }
@@ -831,6 +733,239 @@ fun PassengerScreen() {
                         mutableStateOf(prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK")
                     }
 
+                    val settingsContent = @Composable {
+                        Text(
+                            "Modo Passageiro",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = Color.White
+                        )
+                        OutlinedTextField(
+                            value = serverIp,
+                            onValueChange = { 
+                                serverIp = it 
+                                if (autoReconnect) {
+                                    autoReconnect = false
+                                    prefs.edit().putBoolean("AUTO_RECONNECT", false).apply()
+                                }
+                            },
+                            label = { Text("IP do Motorista", color = Color.Gray) },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
+                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = Color.DarkGray,
+                                focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                unfocusedLabelColor = Color.Gray
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        
+                        androidx.compose.foundation.layout.Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                autoReconnect = !autoReconnect
+                                prefs.edit().putBoolean("AUTO_RECONNECT", autoReconnect).apply()
+                            }.padding(vertical = 4.dp)
+                        ) {
+                            androidx.compose.material3.Switch(
+                                checked = autoReconnect,
+                                onCheckedChange = { 
+                                    autoReconnect = it 
+                                    prefs.edit().putBoolean("AUTO_RECONNECT", it).apply()
+                                },
+                                colors = androidx.compose.material3.SwitchDefaults.colors(
+                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
+                                    uncheckedThumbColor = Color.Gray,
+                                    uncheckedTrackColor = Color.DarkGray
+                                )
+                            )
+                            Text(
+                                text = "Auto-Conectar (buscar motorista)",
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        
+                        Text(
+                            text = "Ao apagar a tela:",
+                            color = Color.LightGray,
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            androidx.compose.material3.Card(
+                                onClick = {
+                                    offScreenBehavior = "LOCK"
+                                    prefs.edit().putString("OFF_SCREEN_BEHAVIOR", "LOCK").apply()
+                                },
+                                modifier = Modifier.weight(1f).height(68.dp),
+                                colors = androidx.compose.material3.CardDefaults.cardColors(
+                                    containerColor = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = 1.dp,
+                                    color = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primary else Color.Transparent
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhonelinkErase,
+                                        contentDescription = null,
+                                        tint = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primary else Color.Gray,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "Bloquear Tela",
+                                        color = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                            
+                            androidx.compose.material3.Card(
+                                onClick = {
+                                    offScreenBehavior = "MINIMIZE"
+                                    prefs.edit().putString("OFF_SCREEN_BEHAVIOR", "MINIMIZE").apply()
+                                },
+                                modifier = Modifier.weight(1f).height(68.dp),
+                                colors = androidx.compose.material3.CardDefaults.cardColors(
+                                    containerColor = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = 1.dp,
+                                    color = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primary else Color.Transparent
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Home,
+                                        contentDescription = null,
+                                        tint = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primary else Color.Gray,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        "Minimizar App",
+                                        color = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    val actionsContent = @Composable {
+                        if (isDiscovering) {
+                            val infiniteTransition = rememberInfiniteTransition()
+                            val scale by infiniteTransition.animateFloat(
+                                initialValue = 0.5f,
+                                targetValue = 2.0f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
+                                    repeatMode = RepeatMode.Restart
+                                ),
+                                label = "radar_scale"
+                            )
+                            val alpha by infiniteTransition.animateFloat(
+                                initialValue = 1f,
+                                targetValue = 0f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
+                                    repeatMode = RepeatMode.Restart
+                                ),
+                                label = "radar_alpha"
+                            )
+
+                            Box(
+                                modifier = Modifier.size(80.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .graphicsLayer {
+                                            scaleX = scale
+                                            scaleY = scale
+                                            this.alpha = alpha
+                                        }
+                                        .border(2.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Buscando motorista...", color = Color.LightGray)
+                        } else {
+                            Button(
+                                onClick = {
+                                    prefs.edit().putString("LAST_IP", serverIp).apply()
+                                    autoReconnect = true
+                                    connectionTrigger++
+                                },
+                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                            ) {
+                                Text("Conectar Manual", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = {
+                                    prefs.edit().putString("LAST_IP", "").apply()
+                                    autoReconnect = true
+                                    connectionTrigger++
+                                },
+                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                            ) {
+                                Text("Auto Conectar", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                            }
+                            
+                            if (offScreenBehavior == "LOCK") {
+                                if (!isAdminActive) {
+                                    androidx.compose.material3.OutlinedButton(
+                                        onClick = {
+                                            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+                                                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+                                                putExtra(
+                                                    DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                                    "Necessário para apagar e bloquear a tela remotamente."
+                                                )
+                                            }
+                                            adminLauncher.launch(intent)
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.secondary
+                                        )
+                                    ) {
+                                        Text("Permitir Bloqueio (Admin)", style = MaterialTheme.typography.bodyMedium)
+                                    }
+                                } else {
+                                    Text(
+                                        "Admin Ativado",
+                                        color = Color.Green,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.padding(top = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     androidx.compose.material3.Surface(
                         modifier = Modifier
                             .padding(16.dp)
@@ -846,251 +981,44 @@ fun PassengerScreen() {
                                 .verticalScroll(rememberScrollState()),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            androidx.compose.foundation.layout.Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(24.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Left Column - Inputs and Settings
-                                Column(
-                                    modifier = Modifier.weight(1.1f),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                            if (useHorizontalLayout) {
+                                androidx.compose.foundation.layout.Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        "Modo Passageiro",
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        color = Color.White
-                                    )
-                                    OutlinedTextField(
-                                        value = serverIp,
-                                        onValueChange = { 
-                                            serverIp = it 
-                                            if (autoReconnect) {
-                                                autoReconnect = false
-                                                prefs.edit().putBoolean("AUTO_RECONNECT", false).apply()
-                                            }
-                                        },
-                                        label = { Text("IP do Motorista", color = Color.Gray) },
-                                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
-                                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                            unfocusedBorderColor = Color.DarkGray,
-                                            focusedLabelColor = MaterialTheme.colorScheme.primary,
-                                            unfocusedLabelColor = Color.Gray
-                                        ),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    
-                                    androidx.compose.foundation.layout.Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.fillMaxWidth().clickable {
-                                            autoReconnect = !autoReconnect
-                                            prefs.edit().putBoolean("AUTO_RECONNECT", autoReconnect).apply()
-                                        }.padding(vertical = 4.dp)
+                                    // Left Column - Inputs and Settings
+                                    Column(
+                                        modifier = Modifier.weight(1.1f),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        androidx.compose.material3.Switch(
-                                            checked = autoReconnect,
-                                            onCheckedChange = { 
-                                                autoReconnect = it 
-                                                prefs.edit().putBoolean("AUTO_RECONNECT", it).apply()
-                                            },
-                                            colors = androidx.compose.material3.SwitchDefaults.colors(
-                                                checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                                checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
-                                                uncheckedThumbColor = Color.Gray,
-                                                uncheckedTrackColor = Color.DarkGray
-                                            )
-                                        )
-                                        Text(
-                                            text = "Auto-Conectar (buscar motorista)",
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
+                                        settingsContent()
                                     }
                                     
-                                    Text(
-                                        text = "Ao apagar a tela:",
-                                        color = Color.LightGray,
-                                        style = MaterialTheme.typography.titleSmall
-                                    )
-                                    
-                                    androidx.compose.foundation.layout.Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    // Right Column - Actions
+                                    Column(
+                                        modifier = Modifier.weight(0.9f),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        androidx.compose.material3.Card(
-                                            onClick = {
-                                                offScreenBehavior = "LOCK"
-                                                prefs.edit().putString("OFF_SCREEN_BEHAVIOR", "LOCK").apply()
-                                            },
-                                            modifier = Modifier.weight(1f).height(68.dp),
-                                            colors = androidx.compose.material3.CardDefaults.cardColors(
-                                                containerColor = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
-                                            ),
-                                            border = androidx.compose.foundation.BorderStroke(
-                                                width = 1.dp,
-                                                color = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primary else Color.Transparent
-                                            )
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.fillMaxSize(),
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.PhonelinkErase,
-                                                    contentDescription = null,
-                                                    tint = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primary else Color.Gray,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text(
-                                                    "Bloquear Tela",
-                                                    color = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        }
-                                        
-                                        androidx.compose.material3.Card(
-                                            onClick = {
-                                                offScreenBehavior = "MINIMIZE"
-                                                prefs.edit().putString("OFF_SCREEN_BEHAVIOR", "MINIMIZE").apply()
-                                            },
-                                            modifier = Modifier.weight(1f).height(68.dp),
-                                            colors = androidx.compose.material3.CardDefaults.cardColors(
-                                                containerColor = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
-                                            ),
-                                            border = androidx.compose.foundation.BorderStroke(
-                                                width = 1.dp,
-                                                color = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primary else Color.Transparent
-                                            )
-                                        ) {
-                                            Column(
-                                                modifier = Modifier.fillMaxSize(),
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Home,
-                                                    contentDescription = null,
-                                                    tint = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primary else Color.Gray,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text(
-                                                    "Minimizar App",
-                                                    color = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        }
+                                        actionsContent()
                                     }
                                 }
-                                
-                                // Right Column - Actions
+                            } else {
+                                // Vertical layout: portrait or narrow horizontal
                                 Column(
-                                    modifier = Modifier.weight(0.9f),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    settingsContent()
+                                }
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    if (isDiscovering) {
-                                        val infiniteTransition = rememberInfiniteTransition()
-                                        val scale by infiniteTransition.animateFloat(
-                                            initialValue = 0.5f,
-                                            targetValue = 2.0f,
-                                            animationSpec = infiniteRepeatable(
-                                                animation = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
-                                                repeatMode = RepeatMode.Restart
-                                            ),
-                                            label = "radar_scale"
-                                        )
-                                        val alpha by infiniteTransition.animateFloat(
-                                            initialValue = 1f,
-                                            targetValue = 0f,
-                                            animationSpec = infiniteRepeatable(
-                                                animation = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
-                                                repeatMode = RepeatMode.Restart
-                                            ),
-                                            label = "radar_alpha"
-                                        )
-
-                                        Box(
-                                            modifier = Modifier.size(80.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(20.dp)
-                                                    .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .graphicsLayer {
-                                                        scaleX = scale
-                                                        scaleY = scale
-                                                        this.alpha = alpha
-                                                    }
-                                                    .border(2.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(16.dp))
-                                        Text("Buscando motorista...", color = Color.LightGray)
-                                    } else {
-                                        Button(
-                                            onClick = {
-                                                prefs.edit().putString("LAST_IP", serverIp).apply()
-                                                autoReconnect = true
-                                                connectionTrigger++
-                                            },
-                                            modifier = Modifier.fillMaxWidth().height(50.dp)
-                                        ) {
-                                            Text("Conectar Manual", style = MaterialTheme.typography.bodyMedium)
-                                        }
-                                        
-                                        androidx.compose.material3.OutlinedButton(
-                                            onClick = {
-                                                prefs.edit().putString("LAST_IP", "").apply()
-                                                autoReconnect = true
-                                                connectionTrigger++
-                                            },
-                                            modifier = Modifier.fillMaxWidth().height(50.dp)
-                                        ) {
-                                            Text("Auto Conectar", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                                        }
-                                        
-                                        if (offScreenBehavior == "LOCK") {
-                                            if (!isAdminActive) {
-                                                androidx.compose.material3.OutlinedButton(
-                                                    onClick = {
-                                                        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                                                            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-                                                            putExtra(
-                                                                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                                                                "Necessário para apagar e bloquear a tela remotamente."
-                                                            )
-                                                        }
-                                                        adminLauncher.launch(intent)
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                                                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                                        contentColor = MaterialTheme.colorScheme.secondary
-                                                    )
-                                                ) {
-                                                    Text("Permitir Bloqueio (Admin)", style = MaterialTheme.typography.bodyMedium)
-                                                }
-                                            } else {
-                                                Text(
-                                                    "Admin Ativado",
-                                                    color = Color.Green,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    modifier = Modifier.padding(top = 8.dp)
-                                                )
-                                            }
-                                        }
-                                    }
+                                    actionsContent()
                                 }
                             }
                         }
@@ -1108,6 +1036,165 @@ fun PassengerScreen() {
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
             ) {
                 Icon(Icons.Default.WifiTetheringOff, contentDescription = "Desconectar", tint = Color.Gray)
+            }
+        }
+    }
+}
+
+@Composable
+fun PassengerInfoCard(command: String?, currentText: String) {
+    androidx.compose.material3.Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = Color(0xFF1E1E1E)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            if (command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO") {
+                if (command == "CMD_EXIBIR_BEM_VINDO") {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "Bem-Vindo!",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color(0xFF4DD0E1)
+                        )
+                        Text(
+                            "Fique à vontade e conecte-se à internet.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.Gray
+                        )
+                    }
+                    androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+                }
+                // Rede Wi-Fi
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Rede Wi-Fi",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        "AL€X",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White
+                    )
+                }
+
+                androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                // Senha
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Senha",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    SelectionContainer {
+                        Text(
+                            "qwertyuiop",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White
+                        )
+                    }
+                }
+            } else if (command == "CMD_EXIBIR_MEU_PIX") {
+                // Pix Fixo (Meu Pix)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Nome",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        "Alex Lopes da Silva",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White
+                    )
+                }
+
+                androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Instituição",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        "Mercado Pago",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White
+                    )
+                }
+
+                androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Chave Pix",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    SelectionContainer {
+                        Text(
+                            "87981504902",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White
+                        )
+                    }
+                }
+            } else {
+                // Pix Extraído Dinamicamente
+                val pixData = parsePixPayload(currentText)
+                
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Nome",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        pixData.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White
+                    )
+                }
+
+                androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        if (pixData.amount.isNotEmpty()) "Valor / Cidade" else "Cidade",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        if (pixData.amount.isNotEmpty()) "R$ ${pixData.amount} - ${pixData.city}" else pixData.city,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White
+                    )
+                }
+
+                androidx.compose.material3.HorizontalDivider(color = Color(0xFF2C2C2C))
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Chave Pix",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    SelectionContainer {
+                        Text(
+                            pixData.key,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White
+                        )
+                    }
+                }
             }
         }
     }
