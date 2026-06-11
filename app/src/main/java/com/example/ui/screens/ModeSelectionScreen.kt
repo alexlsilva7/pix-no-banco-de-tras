@@ -45,21 +45,6 @@ fun ModeSelectionScreen(
   val useHorizontalLayout = isLandscape && screenWidthDp >= 640
 
   Box(modifier = Modifier.fillMaxSize()) {
-    androidx.compose.material3.IconButton(
-      onClick = onSettingsSelected,
-      modifier = Modifier
-        .align(Alignment.TopEnd)
-        .padding(16.dp)
-        .size(48.dp)
-    ) {
-      Icon(
-        imageVector = Icons.Default.Settings,
-        contentDescription = "Configurações",
-        tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.size(28.dp)
-      )
-    }
-
     Column(
       modifier = Modifier
         .fillMaxSize()
@@ -115,6 +100,21 @@ fun ModeSelectionScreen(
           PassengerCard(onPassengerSelected)
         }
       }
+    }
+
+    androidx.compose.material3.IconButton(
+      onClick = onSettingsSelected,
+      modifier = Modifier
+        .align(Alignment.TopEnd)
+        .padding(16.dp)
+        .size(48.dp)
+    ) {
+      Icon(
+        imageVector = Icons.Default.Settings,
+        contentDescription = "Configurações",
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.size(28.dp)
+      )
     }
   }
 }
