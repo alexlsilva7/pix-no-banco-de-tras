@@ -244,24 +244,36 @@ fun PassengerScreen() {
                 val timeoutMs = safetyTimeoutMinutes * 60_000L
                 kotlinx.coroutines.delay(timeoutMs)
                 TcpClient.clearImage()
-                // Remove flags de tela caso o motorista esqueça
-                context.getActivity()?.let { activity ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                        activity.setTurnScreenOn(false)
-                        activity.setShowWhenLocked(false)
-                    } else {
-                        activity.window.clearFlags(
-                            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-                        )
+                
+                val offScreenBehavior = prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK"
+                if (offScreenBehavior == "LOCK") {
+                    if (dpm.isAdminActive(adminComponent)) {
+                        try {
+                            dpm.lockNow()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                     }
-                    activity.window.clearFlags(
-                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-                    )
-                    val lp = activity.window.attributes
-                    lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                    activity.window.attributes = lp
+                    context.getActivity()?.let { activity ->
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            activity.setTurnScreenOn(false)
+                            activity.setShowWhenLocked(false)
+                        } else {
+                            activity.window.clearFlags(
+                                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                            )
+                        }
+                        activity.window.clearFlags(
+                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                        )
+                        val lp = activity.window.attributes
+                        lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                        activity.window.attributes = lp
+                    }
+                } else {
+                    context.getActivity()?.moveTaskToBack(true)
                 }
             }
         }
@@ -708,8 +720,8 @@ fun PassengerScreen() {
                 "WAITING" -> {
                     val infiniteTransition = rememberInfiniteTransition()
                     val alpha by infiniteTransition.animateFloat(
-                        initialValue = 0.3f,
-                        targetValue = 1.0f,
+                        initialValue = 0.05f,
+                        targetValue = 0.25f,
                         animationSpec = infiniteRepeatable(
                             animation = tween(1500),
                             repeatMode = RepeatMode.Reverse
