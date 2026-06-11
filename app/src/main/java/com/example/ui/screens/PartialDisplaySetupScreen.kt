@@ -34,6 +34,8 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
         val originalOrientation = activity?.requestedOrientation
         activity?.requestedOrientation = when (passengerOrientation) {
             "PORTRAIT" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            "REVERSE_PORTRAIT" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            "REVERSE_LANDSCAPE" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
             "AUTO" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
             else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }

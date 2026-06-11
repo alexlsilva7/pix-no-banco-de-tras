@@ -210,14 +210,40 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
                     )
                     
                     // Orientation
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Orientação da Tela", color = Color.White, style = MaterialTheme.typography.bodyMedium)
                         androidx.compose.foundation.layout.Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            val orientations = listOf("LANDSCAPE" to "Paisagem", "PORTRAIT" to "Retrato", "AUTO" to "Auto")
-                            orientations.forEach { (value, label) ->
+                            val row1 = listOf("LANDSCAPE" to "Paisagem", "PORTRAIT" to "Retrato", "AUTO" to "Auto")
+                            row1.forEach { (value, label) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        passengerOrientation = value
+                                        prefs.edit().putString("PASSENGER_ORIENTATION", value).apply()
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (passengerOrientation == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (passengerOrientation == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(label, color = if (passengerOrientation == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                        }
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val row2 = listOf("REVERSE_LANDSCAPE" to "Paisagem Invertida", "REVERSE_PORTRAIT" to "Retrato Invertido")
+                            row2.forEach { (value, label) ->
                                 androidx.compose.material3.Card(
                                     onClick = {
                                         passengerOrientation = value
