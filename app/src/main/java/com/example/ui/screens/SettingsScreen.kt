@@ -113,6 +113,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
     var debugMonitorEnabled by remember { mutableStateOf(prefs.getBoolean("DEBUG_MONITOR_ENABLED", false)) }
     var autoScanInterval by remember { mutableStateOf(prefs.getString("AUTO_SCAN_INTERVAL", "10") ?: "10") }
     var qrScaleFactor by remember { mutableStateOf(prefs.getFloat("QR_SCALE_FACTOR", 0.5f)) }
+    var qrEngine by remember { mutableStateOf(prefs.getString("QR_ENGINE", "MLKIT") ?: "MLKIT") }
     
     var passengerOrientation by remember { mutableStateOf(prefs.getString("PASSENGER_ORIENTATION", "LANDSCAPE") ?: "LANDSCAPE") }
     var displayMode by remember { mutableStateOf(prefs.getString("PASSENGER_DISPLAY_MODE", "FULLSCREEN") ?: "FULLSCREEN") }
@@ -508,6 +509,43 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
                                         Text(
                                             label,
                                             color = if (qrScaleFactor == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Mecanismo de Leitura", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        Text("Google ML Kit é mais rápido. ZXing é a alternativa (fallback).", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val engines = listOf("MLKIT" to "Google ML Kit", "ZXING" to "ZXing")
+                            engines.forEach { (value, label) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        qrEngine = value
+                                        prefs.edit().putString("QR_ENGINE", value).apply()
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (qrEngine == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (qrEngine == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            label,
+                                            color = if (qrEngine == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
                                             style = MaterialTheme.typography.bodySmall
                                         )
                                     }
