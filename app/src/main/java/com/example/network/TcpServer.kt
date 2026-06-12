@@ -1,5 +1,9 @@
 package com.example.network
 
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.os.PowerManager
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,9 +38,12 @@ object TcpServer {
     // REVERTIDO: Removido os fluxos adicionais de telemetria complexa e pings
 
     private val serverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
-    suspend fun startServer(port: Int = 8080) = withContext(Dispatchers.IO) {
+    suspend fun startServer(context: Context, port: Int = 8080) = withContext(Dispatchers.IO) {
         if (isRunning) return@withContext
+        acquireLocks(context)
         try {
             serverSocket = ServerSocket(port)
             isRunning = true
@@ -170,6 +177,7 @@ object TcpServer {
         isRunning = false
         _isServerRunningState.value = false
         serverScope.coroutineContext.cancelChildren()
+        releaseLocks()
 
         try {
             synchronized(clientSockets) {
@@ -184,6 +192,38 @@ object TcpServer {
             serverSocket = null
         } catch (e: Exception) {
              Log.e("TcpServer", "Erro ao parar servidor: ${e.message}")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun acquireLocks(context: Context) {
+        try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PixNoBancoDeTras::DriverWakeLock").apply {
+                acquire()
+            }
+
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            wifiLock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "PixNoBancoDeTras::DriverWifiLock")
+            } else {
+                wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "PixNoBancoDeTras::DriverWifiLock")
+            }.apply {
+                acquire()
+            }
+            Log.d("TcpServer", "Locks de CPU e Wi-Fi do Motorista adquiridos.")
+        } catch (e: Exception) {
+            Log.e("TcpServer", "Erro ao obter locks de hardware: ${e.message}")
+        }
+    }
+
+    private fun releaseLocks() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+            if (wifiLock?.isHeld == true) wifiLock?.release()
+            Log.d("TcpServer", "Locks de hardware do Motorista liberados.")
+        } catch (e: Exception) {
+            Log.e("TcpServer", "Erro ao liberar locks: ${e.message}")
         }
     }
 }

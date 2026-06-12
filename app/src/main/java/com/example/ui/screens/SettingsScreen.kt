@@ -34,6 +34,9 @@ import com.example.network.TcpClient
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import android.os.Bundle
 import android.content.pm.ActivityInfo
 import androidx.activity.ComponentActivity
@@ -105,6 +108,8 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
     
     var port by remember { mutableStateOf(prefs.getString("PORT", "8080") ?: "8080") }
+    var hotspotSsid by remember { mutableStateOf(prefs.getString("HOTSPOT_SSID", "AL€X") ?: "AL€X") }
+    var hotspotPassword by remember { mutableStateOf(prefs.getString("HOTSPOT_PASSWORD", "qwertyuiop") ?: "qwertyuiop") }
     var maxBrightness by remember { mutableStateOf(prefs.getBoolean("MAX_BRIGHTNESS", true)) }
     var offScreenBehavior by remember { mutableStateOf(prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK") }
     var safetyTimeout by remember { mutableStateOf(prefs.getString("SAFETY_TIMEOUT", "2") ?: "2") }
@@ -124,12 +129,38 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
     
     var hasOverlayPermission by remember { mutableStateOf(android.provider.Settings.canDrawOverlays(context)) }
     var hasAccessibilityPermission by remember { mutableStateOf(isAccessibilityServiceEnabled(context, OverlayService::class.java)) }
+    var isBatteryUnrestricted by remember {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        mutableStateOf(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) pm.isIgnoringBatteryOptimizations(context.packageName) else true)
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var resumeTrigger by remember { mutableStateOf(0) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                resumeTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(resumeTrigger) {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        isBatteryUnrestricted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) pm.isIgnoringBatteryOptimizations(context.packageName) else true
+    }
 
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) {
         hasOverlayPermission = android.provider.Settings.canDrawOverlays(context)
         hasAccessibilityPermission = isAccessibilityServiceEnabled(context, OverlayService::class.java)
+        val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        isBatteryUnrestricted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) pm.isIgnoringBatteryOptimizations(context.packageName) else true
     }
 
     val adminLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -201,6 +232,40 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                         )
+                    )
+
+                    OutlinedTextField(
+                        value = hotspotSsid,
+                        onValueChange = { newValue ->
+                            hotspotSsid = newValue
+                            prefs.edit().putString("HOTSPOT_SSID", newValue).apply()
+                        },
+                        label = { Text("Nome do Wi-Fi (SSID)", color = Color.Gray) },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = Color.Gray
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = hotspotPassword,
+                        onValueChange = { newValue ->
+                            hotspotPassword = newValue
+                            prefs.edit().putString("HOTSPOT_PASSWORD", newValue).apply()
+                        },
+                        label = { Text("Senha do Wi-Fi", color = Color.Gray) },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
+                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = Color.DarkGray,
+                            focusedLabelColor = MaterialTheme.colorScheme.primary,
+                            unfocusedLabelColor = Color.Gray
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -761,6 +826,34 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
                                 }
                             ) {
                                 Text("Habilitar")
+                            }
+                        }
+                    }
+
+                    // Battery Optimization Status / Settings
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Otimização de Bateria", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                text = if (isBatteryUnrestricted) "Irrestrito (Recomendado)" else "Otimizado (Pode congelar o app)",
+                                color = if (isBatteryUnrestricted) Color.Green else Color.LightGray,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        if (!isBatteryUnrestricted) {
+                            Button(
+                                onClick = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                        val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                        launcher.launch(intent)
+                                    }
+                                }
+                            ) {
+                                Text("Ajustar")
                             }
                         }
                     }

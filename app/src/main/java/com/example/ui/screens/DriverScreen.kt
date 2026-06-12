@@ -18,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.view.WindowManager
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.OutlinedTextField
@@ -27,7 +26,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.selection.SelectionContainer
 import com.example.network.TcpClient
@@ -64,6 +62,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -93,11 +92,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
 import com.example.ui.theme.MyApplicationTheme
 
-
 import com.example.utils.*
 import com.example.OverlayService
 import com.example.ImageRepository
-import androidx.compose.runtime.getValue
 
 @Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -115,7 +112,20 @@ fun DriverScreen() {
     val scrollState = rememberScrollState()
     val connectedClients by TcpServer.connectedClients.collectAsState()
     val isServerRunning by TcpServer.isServerRunningState.collectAsState()
+    val isBtServerRunning by com.example.network.BluetoothServerHelper.isBluetoothServerRunning.collectAsState()
     val coroutineScope = rememberCoroutineScope()
+
+    val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
+    val hotspotSsid = remember { prefs.getString("HOTSPOT_SSID", "AL€X") ?: "AL€X" }
+    val hotspotPassword = remember { prefs.getString("HOTSPOT_PASSWORD", "qwertyuiop") ?: "qwertyuiop" }
+    val port = remember { prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080 }
+
+    var hasBluetoothPermission by remember { mutableStateOf(com.example.utils.hasBluetoothPermissions(context)) }
+    val bluetoothPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        hasBluetoothPermission = results.values.all { it }
+    }
     
     val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
@@ -136,7 +146,7 @@ fun DriverScreen() {
         androidx.compose.material3.CenterAlignedTopAppBar(
             title = { Text("Painel do Motorista") },
             navigationIcon = {
-                androidx.compose.material3.IconButton(onClick = { /* Handle back if needed or rely on system back */ }) {
+                androidx.compose.material3.IconButton(onClick = { /* ... */ }) {
                     Icon(imageVector = Icons.Default.DirectionsCar, contentDescription = null)
                 }
             },
@@ -145,9 +155,9 @@ fun DriverScreen() {
             )
         )
         
-        // Status do Servidor
+        // STATUS 1: Servidor de Transmissão (TCP)
         androidx.compose.material3.Card(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             shape = RoundedCornerShape(24.dp),
             colors = androidx.compose.material3.CardDefaults.cardColors(
                 containerColor = if (isServerRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
@@ -179,7 +189,7 @@ fun DriverScreen() {
                             TcpServer.stopServer()
                         } else {
                             coroutineScope.launch {
-                                TcpServer.startServer()
+                                TcpServer.startServer(context, port)
                             }
                         }
                     },
@@ -189,6 +199,63 @@ fun DriverScreen() {
                     )
                 ) {
                     Text(if (isServerRunning) "Desligar Servidor" else "Iniciar Servidor")
+                }
+            }
+        }
+
+        // STATUS 2: Servidor Bluetooth Independente
+        androidx.compose.material3.Card(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+                containerColor = if (isBtServerRunning) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.Bluetooth,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = if (isBtServerRunning) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = if (isBtServerRunning) "Pareamento BT Ativo" else "Pareamento BT Inativo",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = if (isBtServerRunning) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Auxilia os passageiros a se conectarem no seu Wi-Fi.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = {
+                        if (isBtServerRunning) {
+                            com.example.network.BluetoothServerHelper.stopBluetoothServer()
+                        } else {
+                            if (com.example.utils.hasBluetoothPermissions(context)) {
+                                coroutineScope.launch {
+                                    com.example.network.BluetoothServerHelper.startBluetoothServer(
+                                        context = context,
+                                        ssid = hotspotSsid,
+                                        pass = hotspotPassword,
+                                        ip = ipAddress
+                                    )
+                                }
+                            } else {
+                                bluetoothPermissionLauncher.launch(com.example.utils.bluetoothPermissionsList())
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isBtServerRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+                    )
+                ) {
+                    Text(if (isBtServerRunning) "Desativar Bluetooth" else "Ativar Bluetooth")
                 }
             }
         }
@@ -238,6 +305,19 @@ fun DriverScreen() {
                         launcher.launch(intent)
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Habilitar Acessibilidade")
+                    }
+                }
+            }
+        } else if (!hasBluetoothPermission) {
+            androidx.compose.material3.OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Permissão de Bluetooth", style = MaterialTheme.typography.titleMedium)
+                    Text("Necessária para transmitir os ajustes de Wi-Fi aos passageiros de forma transparente.", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = {
+                        bluetoothPermissionLauncher.launch(com.example.utils.bluetoothPermissionsList())
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Conceder Permissão")
                     }
                 }
             }
@@ -318,4 +398,3 @@ fun DriverScreen() {
         }
     }
 }
-

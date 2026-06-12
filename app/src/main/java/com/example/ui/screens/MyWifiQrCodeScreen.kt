@@ -98,7 +98,11 @@ import com.example.utils.*
 
 @Composable
 fun MyWifiQrCodeScreen(onBack: () -> Unit) {
-    val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("PixPrefs", Context.MODE_PRIVATE) }
+    val hotspotSsid = remember { prefs.getString("HOTSPOT_SSID", "AL€X") ?: "AL€X" }
+    val hotspotPassword = remember { prefs.getString("HOTSPOT_PASSWORD", "qwertyuiop") ?: "qwertyuiop" }
+    val wifiPayload = "WIFI:S:$hotspotSsid;T:WPA;P:$hotspotPassword;H:false;;"
     val qrBitmap = remember {
         try {
             val writer = com.google.zxing.qrcode.QRCodeWriter()
@@ -203,7 +207,7 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
                                     color = MaterialTheme.colorScheme.primary
                                 )
                                 Text(
-                                    "AL€X",
+                                    hotspotSsid,
                                     style = MaterialTheme.typography.titleLarge,
                                     color = Color.White
                                 )
@@ -220,7 +224,7 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
                                 )
                                 SelectionContainer {
                                     Text(
-                                        "qwertyuiop",
+                                        hotspotPassword,
                                         style = MaterialTheme.typography.titleLarge,
                                         color = Color.White
                                     )

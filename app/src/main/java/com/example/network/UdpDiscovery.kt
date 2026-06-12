@@ -2,6 +2,9 @@ package com.example.network
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -13,7 +16,9 @@ object UdpDiscovery {
     private const val RESPONSE_MESSAGE = "PIX_SERVER_HERE"
 
     var isServerListening = false
-    var isClientListening = false
+    
+    private val _isClientListeningState = MutableStateFlow(false)
+    val isClientListeningState: StateFlow<Boolean> = _isClientListeningState.asStateFlow()
 
     // Chamado pelo Motorista (Servidor)
     suspend fun startDiscoveryServer() = withContext(Dispatchers.IO) {
@@ -55,6 +60,7 @@ object UdpDiscovery {
 
     // Chamado pelo Passageiro (Cliente) para encontrar o servidor
     suspend fun discoverServerIp(): String? = withContext(Dispatchers.IO) {
+        _isClientListeningState.value = true
         var socket: DatagramSocket? = null
         try {
             socket = DatagramSocket()
@@ -62,7 +68,6 @@ object UdpDiscovery {
             socket.soTimeout = 3000 // 3 segundos de timeout
 
             val requestData = DISCOVERY_MESSAGE.toByteArray()
-            // Tenta enviar para o endereço de broadcast da sub-rede local, ou genérico como fallback
             val broadcastAddress = getBroadcastAddress() ?: InetAddress.getByName("255.255.255.255")
             val requestPacket = DatagramPacket(
                 requestData, requestData.size,
@@ -74,7 +79,6 @@ object UdpDiscovery {
             val buffer = ByteArray(256)
             val responsePacket = DatagramPacket(buffer, buffer.size)
             
-            // Aguarda resposta
             socket.receive(responsePacket)
             val message = String(responsePacket.data, 0, responsePacket.length)
 
@@ -87,6 +91,7 @@ object UdpDiscovery {
             Log.e("UdpDiscovery", "Erro ao buscar servidor UDP: ${e.message}")
         } finally {
             socket?.close()
+            _isClientListeningState.value = false
         }
         return@withContext null
     }

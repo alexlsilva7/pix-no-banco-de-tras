@@ -90,6 +90,8 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MyApplicationTheme
+import com.example.utils.getLocalIpAddress
+import androidx.compose.material.icons.filled.Bluetooth
 
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -377,7 +379,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             val prefs = getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
             val portString = prefs.getString("PORT", "8080") ?: "8080"
             val port = portString.toIntOrNull() ?: 8080
-            TcpServer.startServer(port)
+            TcpServer.startServer(this@OverlayService, port)
         }
         scope.launch {
             com.example.network.UdpDiscovery.startDiscoveryServer()
@@ -409,6 +411,10 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         view.apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
+                val prefs = remember { getSharedPreferences("PixPrefs", Context.MODE_PRIVATE) }
+                val hotspotSsid = remember { prefs.getString("HOTSPOT_SSID", "AL€X") ?: "AL€X" }
+                val hotspotPassword = remember { prefs.getString("HOTSPOT_PASSWORD", "qwertyuiop") ?: "qwertyuiop" }
+                
                 val connectedClientsList by TcpServer.connectedClients.collectAsState()
                 val passengerBattery by TcpServer.clientBatteryState.collectAsState()
                 val isServerRunning by TcpServer.isServerRunningState.collectAsState()
@@ -419,8 +425,6 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 val currentEvents by debugEventTypes.collectAsState()
                 val isDebugEnabled by isDebugMonitorEnabledFlow.collectAsState()
                 val scannedLogs by scannedLogsFlow.collectAsState()
-                
-                // REVERTIDO: Removido coletas de ping e métricas extras do TcpServer
                 
                 MyApplicationTheme {
                     OverlayWidget(
@@ -462,7 +466,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                 }
                                 is OverlayAction.SendWelcome -> {
                                     scope.launch {
-                                        val wifiPayload = "WIFI:S:AL'X;T:WPA;P:qwertyuiop;H:false;;"
+                                        val wifiPayload = "WIFI:S:$hotspotSsid;T:WPA;P:$hotspotPassword;H:false;;"
                                         TcpServer.sendCommandAndText("CMD_EXIBIR_BEM_VINDO", wifiPayload)
                                     }
                                 }
@@ -488,7 +492,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                 }
                                 is OverlayAction.SendWifi -> {
                                     scope.launch {
-                                        val wifiPayload = "WIFI:S:AL€X;T:WPA;P:qwertyuiop;H:false;;"
+                                        val wifiPayload = "WIFI:S:$hotspotSsid;T:WPA;P:$hotspotPassword;H:false;;"
                                         TcpServer.sendCommandAndText("CMD_EXIBIR_WIFI", wifiPayload)
                                     }
                                 }
@@ -500,7 +504,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                             val prefs = getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
                                             val portString = prefs.getString("PORT", "8080") ?: "8080"
                                             val port = portString.toIntOrNull() ?: 8080
-                                            TcpServer.startServer(port)
+                                            TcpServer.startServer(this@OverlayService, port)
                                         }
                                     }
                                 }
@@ -538,6 +542,21 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                 }
                                 is OverlayAction.CloseLogsDialog -> {
                                     scannedLogsFlow.value = null
+                                }
+                                is OverlayAction.ToggleBluetoothServer -> {
+                                    scope.launch {
+                                        if (com.example.network.BluetoothServerHelper.isBluetoothServerRunning.value) {
+                                            com.example.network.BluetoothServerHelper.stopBluetoothServer()
+                                        } else {
+                                            val ipAddress = getLocalIpAddress()
+                                            com.example.network.BluetoothServerHelper.startBluetoothServer(
+                                                context = this@OverlayService,
+                                                ssid = hotspotSsid,
+                                                pass = hotspotPassword,
+                                                ip = ipAddress
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -597,6 +616,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         hideBubble()
         store.clear()
         TcpServer.stopServer()
+        com.example.network.BluetoothServerHelper.stopBluetoothServer()
         com.example.network.UdpDiscovery.stopDiscoveryServer()
         scope.cancel()
     }
@@ -744,6 +764,7 @@ sealed class OverlayAction {
     data object OpenApp : OverlayAction()
     data object ScanLogs : OverlayAction()
     data object CloseLogsDialog : OverlayAction()
+    data object ToggleBluetoothServer : OverlayAction()
 }
 
 @Composable
@@ -922,14 +943,13 @@ fun OverlayWidget(
                                 )
                             }
                             Box(modifier = Modifier.weight(1f)) {
+                                val isBtServerRunning by com.example.network.BluetoothServerHelper.isBluetoothServerRunning.collectAsState()
                                 MenuActionButton(
-                                    icon = Icons.Default.List,
-                                    label = "Ver Logs",
-                                    tint = Color(0xFF9575CD),
+                                    icon = Icons.Default.Bluetooth,
+                                    label = if (isBtServerRunning) "Parar BT" else "Ligar BT",
+                                    tint = if (isBtServerRunning) Color(0xFFE57373) else Color(0xFF9575CD),
                                     onClick = { 
-                                        expanded = false
-                                        onAction(OverlayAction.ExpandChanged(false))
-                                        onAction(OverlayAction.ScanLogs)
+                                        onAction(OverlayAction.ToggleBluetoothServer)
                                     }
                                 )
                             }

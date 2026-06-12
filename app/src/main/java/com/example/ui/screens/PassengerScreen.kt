@@ -103,6 +103,7 @@ import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 
 
+import android.annotation.SuppressLint
 import com.example.utils.*
 import com.example.MyDeviceAdminReceiver
 import com.example.PixActivity
@@ -110,13 +111,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import android.os.BatteryManager
 import android.content.IntentFilter
+import com.example.network.PassengerService
 
 @Composable
 fun PassengerScreen() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
     var serverIp by remember { mutableStateOf(prefs.getString("LAST_IP", "192.168.") ?: "192.168.") }
-    var isDiscovering by remember { mutableStateOf(false) }
+    val isDiscovering by com.example.network.UdpDiscovery.isClientListeningState.collectAsState()
     val scope = rememberCoroutineScope()
     
     var autoReconnect by remember { mutableStateOf(prefs.getBoolean("AUTO_RECONNECT", true)) }
@@ -176,56 +178,34 @@ fun PassengerScreen() {
         }
     }
 
-    // REVERTIDO: Voltamos para a escuta de bateria tradicional de 60 segundos
-    fun getBatteryPercentage(ctx: Context): Int {
-        val batteryStatus = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-        val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-        return if (level >= 0 && scale > 0) (level * 100 / scale) else -1
-    }
-
-    LaunchedEffect(isConnected) {
-        if (isConnected) {
-            while (TcpClient.isConnected.value) {
-                val pct = getBatteryPercentage(context)
-                if (pct >= 0) {
-                    TcpClient.sendTelemetry("TELEMETRY_BATTERY:$pct")
-                }
-                kotlinx.coroutines.delay(60000L) // Atualiza a cada 60 segundos de forma leve
+    // Gerenciador do ciclo de vida em background do Serviço persistente
+    LaunchedEffect(connectionTrigger, autoReconnect) {
+        val currentPort = prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080
+        val lastIp = prefs.getString("LAST_IP", "") ?: ""
+        
+        if (autoReconnect || connectionTrigger > 0) {
+            val intent = Intent(context, PassengerService::class.java).apply {
+                action = PassengerService.ACTION_START
+                putExtra(PassengerService.EXTRA_IP, lastIp)
+                putExtra(PassengerService.EXTRA_PORT, currentPort)
+                putExtra(PassengerService.EXTRA_AUTO_RECONNECT, autoReconnect)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
             }
         }
     }
 
-    LaunchedEffect(isConnected, autoReconnect, connectionTrigger) {
-        if (!isConnected && autoReconnect) {
-            while (!TcpClient.isConnected.value && autoReconnect) {
-                val currentPort = prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080
-                val lastIp = prefs.getString("LAST_IP", "")
-                
-                // 1. Tenta reconectar imediatamente no último IP conhecido
-                if (!lastIp.isNullOrEmpty() && lastIp != "192.168.") {
-                    TcpClient.connect(lastIp, currentPort)
+    DisposableEffect(Unit) {
+        onDispose {
+            // Se o usuário fechar a tela, encerra o serviço se não estiver de fato conectado
+            if (!TcpClient.isConnected.value) {
+                val intent = Intent(context, PassengerService::class.java).apply {
+                    action = PassengerService.ACTION_STOP
                 }
-
-                // Se o connect() acima falhou, a conexão continua false
-                if (!TcpClient.isConnected.value && autoReconnect) {
-                    // 2. BACKOFF: Aguarda 2 segundos para não sobrecarregar a rede
-                    kotlinx.coroutines.delay(2000)
-                    
-                    // 3. Tenta encontrar o IP na rede (Auto-Discovery)
-                    isDiscovering = true
-                    val discoveredIp = com.example.network.UdpDiscovery.discoverServerIp()
-                    isDiscovering = false
-                    
-                    if (discoveredIp != null) {
-                        serverIp = discoveredIp
-                        prefs.edit().putString("LAST_IP", discoveredIp).apply()
-                        TcpClient.connect(discoveredIp, currentPort)
-                    } else {
-                        // 4. Se não achou nada, aguarda mais 2 segundos antes de reiniciar o laço
-                        kotlinx.coroutines.delay(2000)
-                    }
-                }
+                context.startService(intent)
             }
         }
     }
@@ -865,6 +845,109 @@ fun PassengerScreen() {
                         mutableStateOf(prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK")
                     }
 
+                    // Estados de suporte ao Bluetooth
+                    var isBluetoothConnecting by remember { mutableStateOf(false) }
+                    var bluetoothError by remember { mutableStateOf<String?>(null) }
+                    var hasBluetoothPermission by remember { mutableStateOf(com.example.utils.hasBluetoothPermissions(context)) }
+                    var showDevicePickerDialog by remember { mutableStateOf(false) }
+                    var pairedDevices by remember { mutableStateOf<List<android.bluetooth.BluetoothDevice>>(emptyList()) }
+
+                    val bluetoothPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+                    ) { results ->
+                        hasBluetoothPermission = results.values.all { it }
+                        if (hasBluetoothPermission) {
+                            pairedDevices = com.example.network.BluetoothClientHelper.getPairedDevices(context)
+                            showDevicePickerDialog = true
+                        }
+                    }
+
+                    if (showDevicePickerDialog) {
+                        androidx.compose.material3.AlertDialog(
+                            onDismissRequest = { showDevicePickerDialog = false },
+                            title = { Text("Selecionar Motorista", color = Color.White) },
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (pairedDevices.isEmpty()) {
+                                        Text("Nenhum dispositivo pareado encontrado. Pareie com o celular do motorista nas configurações de Bluetooth do Android.", color = Color.Gray)
+                                    } else {
+                                        Text("Selecione o celular do motorista:", color = Color.LightGray)
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .verticalScroll(rememberScrollState()),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            pairedDevices.forEach { device ->
+                                                @SuppressLint("MissingPermission")
+                                                val deviceName = device.name ?: device.address
+                                                androidx.compose.material3.Card(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clickable {
+                                                            showDevicePickerDialog = false
+                                                            isBluetoothConnecting = true
+                                                            bluetoothError = null
+                                                            scope.launch {
+                                                                com.example.network.BluetoothClientHelper.connectToDriver(
+                                                                    context = context,
+                                                                    device = device,
+                                                                    onConfigReceived = { ssid, pass, ip ->
+                                                                        bluetoothError = "Conectando ao Wi-Fi: $ssid..."
+                                                                        com.example.utils.WifiConnector.connectToWifi(
+                                                                            context = context,
+                                                                            ssid = ssid,
+                                                                            pass = pass,
+                                                                            onConnected = {
+                                                                                isBluetoothConnecting = false
+                                                                                bluetoothError = null
+                                                                                serverIp = ip
+                                                                                prefs.edit().putString("LAST_IP", ip).apply()
+                                                                                autoReconnect = true
+                                                                                connectionTrigger++
+                                                                            },
+                                                                            onError = { err ->
+                                                                                isBluetoothConnecting = false
+                                                                                bluetoothError = "Falha ao conectar Wi-Fi: $err"
+                                                                            }
+                                                                        )
+                                                                    },
+                                                                    onError = { err ->
+                                                                        isBluetoothConnecting = false
+                                                                        bluetoothError = "Erro Bluetooth: $err"
+                                                                    }
+                                                                )
+                                                            }
+                                                        },
+                                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                                        containerColor = Color(0xFF2C2C2C)
+                                                    )
+                                                ) {
+                                                    Text(
+                                                        text = deviceName,
+                                                        color = Color.White,
+                                                        modifier = Modifier.padding(16.dp),
+                                                        style = MaterialTheme.typography.bodyLarge
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                androidx.compose.material3.TextButton(onClick = { showDevicePickerDialog = false }) {
+                                    Text("Cancelar", color = MaterialTheme.colorScheme.primary)
+                                }
+                            },
+                            containerColor = Color(0xFF1E1E1E)
+                        )
+                    }
+
                     val settingsContent = @Composable {
                         Text(
                             "Modo Passageiro",
@@ -1064,6 +1147,57 @@ fun PassengerScreen() {
                                 modifier = Modifier.fillMaxWidth().height(50.dp)
                             ) {
                                 Text("Auto Conectar", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                            }
+
+                            // NOVO BOTÃO: CONECTAR VIA BLUETOOTH
+                            Button(
+                                onClick = {
+                                    if (hasBluetoothPermission) {
+                                        pairedDevices = com.example.network.BluetoothClientHelper.getPairedDevices(context)
+                                        showDevicePickerDialog = true
+                                    } else {
+                                        bluetoothPermissionLauncher.launch(com.example.utils.bluetoothPermissionsList())
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiary
+                                )
+                            ) {
+                                Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Conectar via Bluetooth", style = MaterialTheme.typography.bodyMedium)
+                            }
+
+                            // Feedback visual de conexão Bluetooth
+                            if (isBluetoothConnecting || bluetoothError != null) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                androidx.compose.material3.Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = Color(0xFF2C2C2C)
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        if (isBluetoothConnecting) {
+                                            androidx.compose.material3.CircularProgressIndicator(
+                                                modifier = Modifier.size(24.dp),
+                                                strokeWidth = 2.dp,
+                                                color = MaterialTheme.colorScheme.tertiary
+                                            )
+                                        }
+                                        Text(
+                                            text = bluetoothError ?: "Conectando ao motorista via Bluetooth...",
+                                            color = Color.LightGray,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                    }
+                                }
                             }
                             
                             if (offScreenBehavior == "LOCK") {
