@@ -17,6 +17,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.PixActivity
 import kotlinx.coroutines.*
 
 class PassengerService : Service() {
@@ -40,12 +41,14 @@ class PassengerService : Service() {
 
     private var connectionJob: Job? = null
     private var telemetryJob: Job? = null
+    private var wakeUpJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
         prefs = getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
         acquireLocks()
         createNotificationChannel()
+        startWakeUpObserver()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -74,10 +77,21 @@ class PassengerService : Service() {
     private fun startConnectionLoop(targetIp: String, port: Int, autoReconnect: Boolean) {
         connectionJob?.cancel()
         connectionJob = serviceScope.launch {
+            // Observer reativo: atualiza a notificação assim que o estado de conexão mudar,
+            // independente do connect() bloqueante.
+            launch {
+                TcpClient.isConnected.collect { connected ->
+                    if (connected) {
+                        updateNotification("Conectado ao painel do motorista")
+                        startTelemetryLoop()
+                    }
+                }
+            }
+
             var currentIp = targetIp
             while (isActive) {
                 if (!TcpClient.isConnected.value) {
-                    updateNotification("Desconectado. Tentando conectar...")
+                    updateNotification("Reconectando...")
                     
                     // 1. Tenta conexões diretas no IP conhecido
                     if (currentIp.isNotEmpty() && currentIp != "192.168.") {
@@ -103,9 +117,6 @@ class PassengerService : Service() {
                         break
                     }
                 } else {
-                    updateNotification("Conectado ao painel do motorista")
-                    startTelemetryLoop()
-                    
                     // Mantém o laço ativo enquanto a conexão estiver ativa
                     while (TcpClient.isConnected.value && isActive) {
                         delay(1000)
@@ -183,7 +194,7 @@ class PassengerService : Service() {
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PixNoBancoDeTras::PassengerWakeLock").apply {
-                acquire()
+                acquire(8 * 60 * 60 * 1000L) // Timeout de 8 horas como rede de segurança
             }
 
             val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -213,6 +224,7 @@ class PassengerService : Service() {
     private fun stopForegroundService() {
         connectionJob?.cancel()
         telemetryJob?.cancel()
+        wakeUpJob?.cancel()
         TcpClient.disconnect()
         releaseLocks()
         stopForeground(true)
@@ -221,7 +233,73 @@ class PassengerService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        serviceScope.cancel()
         stopForegroundService()
+        serviceScope.cancel()
+    }
+
+    /**
+     * Observa os comandos recebidos pelo TcpClient para ligar a tela do tablet
+     * quando o motorista envia um Pix/Wi-Fi/Obrigado. Esta lógica fica no Service
+     * (sempre ativo) em vez da Activity (pode ser destruída pelo sistema).
+     */
+    private fun startWakeUpObserver() {
+        wakeUpJob?.cancel()
+        wakeUpJob = serviceScope.launch {
+            TcpClient.command.collect { cmd ->
+                if (cmd != null && (cmd.startsWith("CMD_EXIBIR"))) {
+                    wakeUpScreen(cmd)
+                }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun wakeUpScreen(cmd: String) {
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val screenLock = powerManager.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                PowerManager.ON_AFTER_RELEASE,
+                "PixNoBancoDeTras::ScreenWakeLock"
+            )
+            screenLock.acquire(5000)
+
+            // Lança a PixActivity via Full-Screen Intent para exibir sobre a tela bloqueada
+            val intent = Intent(this, PixActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "pix_alerts"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    channelId,
+                    "Alertas de Pix",
+                    NotificationManager.IMPORTANCE_HIGH
+                )
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(this, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("Novo QR Code")
+                .setContentText("Você tem um novo QR Code na tela.")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setFullScreenIntent(pendingIntent, true)
+                .setAutoCancel(true)
+                .build()
+
+            notificationManager.notify(1001, notification)
+            Log.d("PassengerService", "Tela acordada para comando: $cmd")
+        } catch (e: Exception) {
+            Log.e("PassengerService", "Erro ao acordar tela: ${e.message}")
+        }
     }
 }

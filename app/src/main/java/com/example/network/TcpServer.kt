@@ -200,7 +200,7 @@ object TcpServer {
         try {
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PixNoBancoDeTras::DriverWakeLock").apply {
-                acquire()
+                acquire(8 * 60 * 60 * 1000L) // Timeout de 8 horas como rede de segurança
             }
 
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
