@@ -284,6 +284,9 @@ fun PassengerScreen() {
     }
 
     val qrCodeScale = remember(resumeTrigger) { prefs.getFloat("QR_CODE_SIZE_SCALE", 1.0f) }
+    val partialQrColorStyle = remember(resumeTrigger) {
+        prefs.getString("PARTIAL_QR_COLOR_STYLE", "WHITE_BG_BLACK_QR") ?: "WHITE_BG_BLACK_QR"
+    }
 
     val isWaitingState = isConnected && receivedImage == null && qrCodeText == null && command != "CMD_APAGAR_TELA" && command != "CMD_EXIBIR_OBRIGADO"
 
@@ -534,7 +537,7 @@ fun PassengerScreen() {
                 "QR_CODE" -> {
                     val currentText = qrCodeText
                     if (currentText != null) {
-                        val qrBitmap = remember(currentText) {
+                        val qrBitmap = remember(currentText, displayMode, partialQrColorStyle) {
                             try {
                                 val writer = com.google.zxing.qrcode.QRCodeWriter()
                                 val hints = mapOf(com.google.zxing.EncodeHintType.MARGIN to 0)
@@ -542,9 +545,14 @@ fun PassengerScreen() {
                                 val w = bitMatrix.width
                                 val h = bitMatrix.height
                                 val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+
+                                val isInverted = (displayMode == "PARTIAL" && partialQrColorStyle == "BLACK_BG_WHITE_QR")
+                                val qrColor = if (isInverted) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+                                val bgColor = if (isInverted) android.graphics.Color.BLACK else android.graphics.Color.WHITE
+
                                 for (x in 0 until w) {
                                     for (y in 0 until h) {
-                                        bmp.setPixel(x, y, if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+                                        bmp.setPixel(x, y, if (bitMatrix.get(x, y)) qrColor else bgColor)
                                     }
                                 }
                                 bmp
@@ -571,16 +579,21 @@ fun PassengerScreen() {
                                     val absW = relW * screenW
                                     val absH = relH * screenH
                                     
+                                    val boxBgColor = if (partialQrColorStyle == "BLACK_BG_WHITE_QR") Color.Black else Color.White
+                                    val containerBorderColor = if (partialQrColorStyle == "BLACK_BG_WHITE_QR") Color.Transparent else MaterialTheme.colorScheme.primary
+
                                     Column(
                                         modifier = Modifier
-                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) },
+                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
+                                            .border(2.dp, containerBorderColor, RoundedCornerShape(12.dp))
+                                            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                                            .padding(4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Box(
                                             modifier = Modifier
                                                 .size((absW / density).dp, (absH / density).dp)
-                                                .background(Color.White)
-                                                .padding(0.dp), // ZERADO
+                                                .background(boxBgColor, RoundedCornerShape(8.dp)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             if (qrBitmap != null) {
@@ -594,7 +607,7 @@ fun PassengerScreen() {
                                                 Text("Erro ao gerar QR Code", color = Color.Red)
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(4.dp))
                                         
                                         val descriptionText = when {
                                             command == "CMD_EXIBIR_WIFI" || command == "CMD_EXIBIR_BEM_VINDO" -> {
@@ -619,10 +632,10 @@ fun PassengerScreen() {
                                         Text(
                                             text = descriptionText,
                                             color = Color.White,
-                                            style = MaterialTheme.typography.bodyMedium,
+                                            style = MaterialTheme.typography.bodySmall,
                                             maxLines = 1,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.widthIn(max = (screenW / density).dp)
+                                            modifier = Modifier.widthIn(max = (absW / density).dp)
                                         )
                                     }
                                 }
@@ -796,16 +809,21 @@ fun PassengerScreen() {
                                     val absW = relW * screenW
                                     val absH = relH * screenH
                                     
+                                    val boxBgColor = if (partialQrColorStyle == "BLACK_BG_WHITE_QR") Color.Black else Color.White
+                                    val containerBorderColor = if (partialQrColorStyle == "BLACK_BG_WHITE_QR") Color.Transparent else MaterialTheme.colorScheme.primary
+
                                     Column(
                                         modifier = Modifier
-                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) },
+                                            .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
+                                            .border(2.dp, containerBorderColor, RoundedCornerShape(12.dp))
+                                            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                                            .padding(4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         Box(
                                             modifier = Modifier
                                                 .size((absW / density).dp, (absH / density).dp)
-                                                .background(Color.White)
-                                                .padding(8.dp),
+                                                .background(boxBgColor, RoundedCornerShape(8.dp)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Image(
@@ -815,14 +833,14 @@ fun PassengerScreen() {
                                                 contentScale = ContentScale.Fit
                                             )
                                         }
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             text = "QR Code extraído da tela",
                                             color = Color.White,
-                                            style = MaterialTheme.typography.bodyMedium,
+                                            style = MaterialTheme.typography.bodySmall,
                                             maxLines = 1,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.widthIn(max = (screenW / density).dp)
+                                            modifier = Modifier.widthIn(max = (absW / density).dp)
                                         )
                                     }
                                 }

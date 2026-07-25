@@ -33,6 +33,7 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("PixPrefs", Context.MODE_PRIVATE) }
     val passengerOrientation = prefs.getString("PASSENGER_ORIENTATION", "LANDSCAPE") ?: "LANDSCAPE"
+    val colorStyle = remember { prefs.getString("PARTIAL_QR_COLOR_STYLE", "WHITE_BG_BLACK_QR") ?: "WHITE_BG_BLACK_QR" }
 
     DisposableEffect(passengerOrientation) {
         val activity = context.getActivity()
@@ -44,16 +45,30 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
             "AUTO" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
             else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
+
+        val window = activity?.window
+        if (window != null) {
+            androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+            val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
+
         onDispose {
             if (originalOrientation != null) {
                 activity?.requestedOrientation = originalOrientation
             }
+            if (window != null) {
+                androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+                val windowInsetsController = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+                windowInsetsController.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
         }
     }
 
-    // Gerador de amostra real de QR Code
+    // Gerador do QR Code com cores dinâmicas
     val samplePayload = "00020101021126360014br.gov.bcb.pix0114+5587981504902520400005303986540515.005802BR5919Alex Lopes da Silva6011GaranhunsPE62070503***6304539E"
-    val qrBitmap = remember(samplePayload) {
+    val qrBitmap = remember(samplePayload, colorStyle) {
         try {
             val writer = com.google.zxing.qrcode.QRCodeWriter()
             val hints = mapOf(com.google.zxing.EncodeHintType.MARGIN to 0)
@@ -61,9 +76,13 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
             val w = bitMatrix.width
             val h = bitMatrix.height
             val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+
+            val qrColor = if (colorStyle == "BLACK_BG_WHITE_QR") android.graphics.Color.WHITE else android.graphics.Color.BLACK
+            val bgColor = if (colorStyle == "BLACK_BG_WHITE_QR") android.graphics.Color.BLACK else android.graphics.Color.WHITE
+
             for (x in 0 until w) {
                 for (y in 0 until h) {
-                    bmp.setPixel(x, y, if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+                    bmp.setPixel(x, y, if (bitMatrix.get(x, y)) qrColor else bgColor)
                 }
             }
             bmp
@@ -93,12 +112,15 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
         var absW by remember { mutableStateOf(relW * screenW) }
         var absH by remember { mutableStateOf(relH * screenH) }
 
-        // Elemento Movel e Redimensionável (Pré-visualização do QR Code Real)
+        val containerBgColor = if (colorStyle == "BLACK_BG_WHITE_QR") Color.Black else Color.White
+        val containerBorderColor = if (colorStyle == "BLACK_BG_WHITE_QR") Color.Transparent else MaterialTheme.colorScheme.primary
+
+        // Elemento Movel e Redimensionável (Pré-visualização do QR Code com Estilo e Quadrado/Bordas)
         Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
-                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                    .border(2.dp, containerBorderColor, RoundedCornerShape(12.dp))
                     .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
                     .padding(4.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -106,7 +128,7 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .size((absW / density).dp, (absH / density).dp)
-                        .background(Color.White, RoundedCornerShape(8.dp))
+                        .background(containerBgColor, RoundedCornerShape(8.dp))
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
@@ -160,21 +182,24 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
             }
         }
 
-        // Barra Superior
-        TopAppBar(
-            title = {
-                Column {
-                    Text("Posição e Tamanho do QR Code", color = Color.White, style = MaterialTheme.typography.titleMedium)
-                    Text("Arraste para mover | Puxe a ponta azul para redimensionar", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = Color.White)
-                }
-            },
-            actions = {
-                IconButton(onClick = {
+        // Botões flutuantes (Voltar e Salvar) sem App Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50))
+            ) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = Color.White)
+            }
+
+            IconButton(
+                onClick = {
                     prefs.edit()
                         .putFloat("PARTIAL_QR_X", absX / screenW)
                         .putFloat("PARTIAL_QR_Y", absY / screenH)
@@ -182,11 +207,12 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
                         .putFloat("PARTIAL_QR_HEIGHT", absH / screenH)
                         .apply()
                     onBack()
-                }) {
-                    Icon(Icons.Default.Check, contentDescription = "Salvar", tint = Color.Green)
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xDD1E1E1E))
-        )
+                },
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(50))
+            ) {
+                Icon(Icons.Default.Check, contentDescription = "Salvar", tint = Color.Green)
+            }
+        }
     }
 }

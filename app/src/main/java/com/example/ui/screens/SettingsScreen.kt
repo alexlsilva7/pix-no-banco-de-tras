@@ -128,6 +128,9 @@ fun SettingsScreen(
     
     var passengerOrientation by remember { mutableStateOf(prefs.getString("PASSENGER_ORIENTATION", "LANDSCAPE") ?: "LANDSCAPE") }
     var displayMode by remember { mutableStateOf(prefs.getString("PASSENGER_DISPLAY_MODE", "FULLSCREEN") ?: "FULLSCREEN") }
+    var partialQrColorStyle by remember {
+        mutableStateOf(prefs.getString("PARTIAL_QR_COLOR_STYLE", "WHITE_BG_BLACK_QR") ?: "WHITE_BG_BLACK_QR")
+    }
     
     val dpm = remember { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
     val adminComponent = remember { ComponentName(context, MyDeviceAdminReceiver::class.java) }
@@ -374,6 +377,44 @@ fun SettingsScreen(
                     }
 
                     if (displayMode == "PARTIAL") {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Cores do QR Code (Modo Parcial)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val colorOptions = listOf(
+                                "WHITE_BG_BLACK_QR" to "Fundo Branco\nQR Preto",
+                                "BLACK_BG_WHITE_QR" to "Fundo Preto\nQR Branco"
+                            )
+                            colorOptions.forEach { (value, label) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        partialQrColorStyle = value
+                                        prefs.edit().putString("PARTIAL_QR_COLOR_STYLE", value).apply()
+                                    },
+                                    modifier = Modifier.weight(1f).height(48.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (partialQrColorStyle == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (partialQrColorStyle == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = label,
+                                            color = if (partialQrColorStyle == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(
                             onClick = onNavigateToPartialSetup,
