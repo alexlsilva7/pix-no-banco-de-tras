@@ -103,7 +103,10 @@ import com.example.OverlayService
 
 @Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onNavigateToPartialSetup: () -> Unit
+) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
     
@@ -171,6 +174,8 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
     ) {
         isAdminActive = dpm.isAdminActive(adminComponent)
     }
+
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
 
 
 
@@ -374,7 +379,7 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
                             onClick = onNavigateToPartialSetup,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Configurar Posição do QR Code")
+                            Text("Configurar Posição e Tamanho do QR Code")
                         }
                     }
 
@@ -905,13 +910,25 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
                         if (!hasAccessibilityPermission) {
                             Button(
                                 onClick = {
-                                    val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                    launcher.launch(intent)
+                                    showAccessibilityDialog = true
                                 }
                             ) {
                                 Text("Habilitar")
                             }
                         }
+                    }
+
+                    if (showAccessibilityDialog) {
+                        AccessibilityDisclosureDialog(
+                            onConfirm = {
+                                showAccessibilityDialog = false
+                                val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                launcher.launch(intent)
+                            },
+                            onDismiss = {
+                                showAccessibilityDialog = false
+                            }
+                        )
                     }
 
                     // Battery Optimization Status / Settings

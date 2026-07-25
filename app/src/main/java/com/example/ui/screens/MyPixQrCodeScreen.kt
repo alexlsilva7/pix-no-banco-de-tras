@@ -99,6 +99,9 @@ import com.example.utils.*
 @Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun MyPixQrCodeScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
+    val qrCodeScale = remember { prefs.getFloat("QR_CODE_SIZE_SCALE", 1.0f) }
     val pixPayload = "00020101021126360014br.gov.bcb.pix0114+55879815049025204000053039865802BR5919Alex Lopes da Silva6011GaranhunsPE62070503***6304539E"
 
     val qrBitmap = remember(pixPayload) {
@@ -153,7 +156,7 @@ fun MyPixQrCodeScreen(onBack: () -> Unit) {
                     // QR Code
                     androidx.compose.material3.ElevatedCard(
                         modifier = Modifier
-                            .weight(2f)
+                            .weight(2f * qrCodeScale)
                             .fillMaxHeight(),
                         shape = RoundedCornerShape(24.dp),
                         colors = androidx.compose.material3.CardDefaults.elevatedCardColors(

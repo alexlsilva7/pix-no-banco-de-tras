@@ -100,6 +100,7 @@ import com.example.utils.*
 fun MyWifiQrCodeScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("PixPrefs", Context.MODE_PRIVATE) }
+    val qrCodeScale = remember { prefs.getFloat("QR_CODE_SIZE_SCALE", 1.0f) }
     val hotspotSsid = remember { prefs.getString("HOTSPOT_SSID", "AL€X") ?: "AL€X" }
     val hotspotPassword = remember { prefs.getString("HOTSPOT_PASSWORD", "qwertyuiop") ?: "qwertyuiop" }
     val wifiPayload = "WIFI:S:$hotspotSsid;T:WPA;P:$hotspotPassword;H:false;;"
@@ -157,7 +158,7 @@ fun MyWifiQrCodeScreen(onBack: () -> Unit) {
                 // QR Code
                 androidx.compose.material3.ElevatedCard(
                     modifier = Modifier
-                        .weight(2f)
+                        .weight(2f * qrCodeScale)
                         .fillMaxHeight(),
                     shape = RoundedCornerShape(24.dp),
                     colors = androidx.compose.material3.CardDefaults.elevatedCardColors(

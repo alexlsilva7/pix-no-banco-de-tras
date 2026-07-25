@@ -752,6 +752,8 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
 
                 delay(200)
 
+            try {
+                // Chamada do sistema para captura de tela
                 takeScreenshot(android.view.Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
                     override fun onSuccess(screenshotResult: AccessibilityService.ScreenshotResult) {
                         timeoutJob.cancel()
@@ -763,7 +765,6 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                 hardwareBuffer.close()
 
                                 if (bitmap != null) {
-                                    // Processamento com fallback e prioridade configurada
                                     var qrText = decodeQrCodeWithFallback(bitmap)
                                     
                                     if (qrText == null) {
@@ -840,6 +841,13 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                         restoreViewAndShowError(isSilent, "Falha na captura: $errorMsg")
                     }
                 })
+            } catch (e: SecurityException) {
+                timeoutJob.cancel()
+                restoreViewAndShowError(isSilent, "Permissão pendente: Desative e reative a Acessibilidade nas Configurações do Android.")
+            } catch (e: Exception) {
+                timeoutJob.cancel()
+                restoreViewAndShowError(isSilent, "Erro ao capturar tela: ${e.message}")
+            }
             }
         } else {
             showOverlayToast("Captura de tela via Acessibilidade disponível apenas no Android 11+")

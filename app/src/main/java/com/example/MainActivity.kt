@@ -104,6 +104,7 @@ const val SettingsRoute = "settings"
 const val MyPixQrCodeRoute = "my_pix_qr_code"
 const val MyWifiQrCodeRoute = "my_wifi_qr_code"
 const val PartialSetupRoute = "partial_setup"
+const val QrCodeSizeRoute = "qr_code_size"
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {

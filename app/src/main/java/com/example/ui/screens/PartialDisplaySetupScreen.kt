@@ -2,19 +2,24 @@ package com.example.ui.screens
 
 import android.content.Context
 import android.content.pm.ActivityInfo
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -46,9 +51,35 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
         }
     }
 
+    // Gerador de amostra real de QR Code
+    val samplePayload = "00020101021126360014br.gov.bcb.pix0114+5587981504902520400005303986540515.005802BR5919Alex Lopes da Silva6011GaranhunsPE62070503***6304539E"
+    val qrBitmap = remember(samplePayload) {
+        try {
+            val writer = com.google.zxing.qrcode.QRCodeWriter()
+            val hints = mapOf(com.google.zxing.EncodeHintType.MARGIN to 0)
+            val bitMatrix = writer.encode(samplePayload, com.google.zxing.BarcodeFormat.QR_CODE, 512, 512, hints)
+            val w = bitMatrix.width
+            val h = bitMatrix.height
+            val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+            for (x in 0 until w) {
+                for (y in 0 until h) {
+                    bmp.setPixel(x, y, if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+                }
+            }
+            bmp
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     val density = LocalDensity.current.density
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color(0xFF121212))) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
         val screenW = constraints.maxWidth.toFloat()
         val screenH = constraints.maxHeight.toFloat()
 
@@ -62,46 +93,81 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
         var absW by remember { mutableStateOf(relW * screenW) }
         var absH by remember { mutableStateOf(relH * screenH) }
 
-        // Área para arrastar
+        // Elemento Movel e Redimensionável (Pré-visualização do QR Code Real)
         Box(modifier = Modifier.fillMaxSize()) {
-            Box(
+            Column(
                 modifier = Modifier
                     .offset { IntOffset(absX.roundToInt(), absY.roundToInt()) }
-                    .size((absW / density).dp, (absH / density).dp)
-                    .background(Color.White.copy(alpha = 0.15f))
-                    .border(2.dp, MaterialTheme.colorScheme.primary)
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            absX = (absX + dragAmount.x).coerceIn(0f, screenW - absW)
-                            absY = (absY + dragAmount.y).coerceIn(0f, screenH - absH)
-                        }
-                    }
+                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                    .padding(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    "Arraste para mover",
-                    color = Color.White,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-                // Ícone/Área de redimensionar
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(32.dp)
-                        .background(MaterialTheme.colorScheme.primary)
+                        .size((absW / density).dp, (absH / density).dp)
+                        .background(Color.White, RoundedCornerShape(8.dp))
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                absW = (absW + dragAmount.x).coerceIn(100f * density, screenW - absX)
-                                absH = (absH + dragAmount.y).coerceIn(100f * density, screenH - absY)
+                                absX = (absX + dragAmount.x).coerceIn(0f, screenW - absW)
+                                absY = (absY + dragAmount.y).coerceIn(0f, screenH - absH)
                             }
-                        }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (qrBitmap != null) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "Amostra QR Code",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+
+                    // Alça de Redimensionamento no Canto Inferior Direito
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(36.dp)
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(topStart = 12.dp))
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    absW = (absW + dragAmount.x).coerceIn(80f * density, screenW - absX)
+                                    absH = (absH + dragAmount.y).coerceIn(80f * density, screenH - absY)
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInFull,
+                            contentDescription = "Redimensionar",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Pix: Alex Lopes da Silva | R$ 15,00",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    modifier = Modifier.widthIn(max = (absW / density).dp)
                 )
             }
         }
 
+        // Barra Superior
         TopAppBar(
-            title = { Text("Área do QR Code", color = Color.White) },
+            title = {
+                Column {
+                    Text("Posição e Tamanho do QR Code", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text("Arraste para mover | Puxe a ponta azul para redimensionar", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                }
+            },
             navigationIcon = {
                 IconButton(onClick = onBack) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = Color.White)
@@ -120,7 +186,7 @@ fun PartialDisplaySetupScreen(onBack: () -> Unit) {
                     Icon(Icons.Default.Check, contentDescription = "Salvar", tint = Color.Green)
                 }
             },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xDD1E1E1E))
         )
     }
 }

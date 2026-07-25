@@ -106,6 +106,7 @@ fun DriverScreen() {
     var hasAccessibilityPermission by remember {
         mutableStateOf(isAccessibilityServiceEnabled(context, OverlayService::class.java))
     }
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
     val ipAddress = remember { getLocalIpAddress() }
     
     val lastImageBytes by ImageRepository.lastCapturedImage.collectAsState()
@@ -301,13 +302,25 @@ fun DriverScreen() {
                     Text("Para capturar a tela anonimamente (sem pedir no Android), ative o serviço de Acessibilidade do 'Pix no Banco de Trás'.", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = {
-                        val intent = android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                        launcher.launch(intent)
+                        showAccessibilityDialog = true
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Habilitar Acessibilidade")
                     }
                 }
             }
+        }
+
+        if (showAccessibilityDialog) {
+            AccessibilityDisclosureDialog(
+                onConfirm = {
+                    showAccessibilityDialog = false
+                    val intent = android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    launcher.launch(intent)
+                },
+                onDismiss = {
+                    showAccessibilityDialog = false
+                }
+            )
         } else if (!hasBluetoothPermission) {
             androidx.compose.material3.OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {

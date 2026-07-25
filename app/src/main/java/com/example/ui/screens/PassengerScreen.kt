@@ -22,6 +22,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -56,6 +57,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -276,6 +283,8 @@ fun PassengerScreen() {
         }
     }
 
+    val qrCodeScale = remember(resumeTrigger) { prefs.getFloat("QR_CODE_SIZE_SCALE", 1.0f) }
+
     val isWaitingState = isConnected && receivedImage == null && qrCodeText == null && command != "CMD_APAGAR_TELA" && command != "CMD_EXIBIR_OBRIGADO"
 
     LaunchedEffect(isWaitingState, resumeTrigger) {
@@ -371,20 +380,44 @@ fun PassengerScreen() {
             .background(Color.Black),
         contentAlignment = Alignment.Center
     ) {
-        androidx.compose.animation.AnimatedContent(
+        AnimatedContent(
             targetState = when {
                 command == "CMD_APAGAR_TELA" -> "BLACK"
                 command == "CMD_EXIBIR_OBRIGADO" -> "OBRIGADO"
-                qrCodeText != null -> "QR_CODE"
-                receivedImage != null -> "IMAGE"
+                qrCodeText != null -> "QR_CODE_${qrCodeText.hashCode()}"
+                receivedImage != null -> "IMAGE_${receivedImage?.contentHashCode() ?: 0}"
                 isConnected -> "WAITING"
                 else -> "CONNECT"
             },
             label = "PassengerStateTransition",
             transitionSpec = {
-                androidx.compose.animation.fadeIn(animationSpec = tween(500)).togetherWith(androidx.compose.animation.fadeOut(animationSpec = tween(500)))
+                // Aplica a animação de Escala + Fade quando entra um QR Code, Imagem ou Obrigado
+                if (targetState.startsWith("QR_CODE") || targetState == "OBRIGADO" || targetState.startsWith("IMAGE")) {
+                    (fadeIn(animationSpec = tween(450, easing = FastOutSlowInEasing)) + scaleIn(
+                        initialScale = 0.75f, // Começa em 75% do tamanho e cresce suavemente
+                        animationSpec = tween(450, easing = FastOutSlowInEasing)
+                    )).togetherWith(
+                        fadeOut(animationSpec = tween(300)) + scaleOut(
+                            targetScale = 0.9f,
+                            animationSpec = tween(300)
+                        )
+                    )
+                } else {
+                    // Transição padrão de Fade In/Out para telas de conexão/espera
+                    fadeIn(animationSpec = tween(400)).togetherWith(
+                        fadeOut(animationSpec = tween(400))
+                    )
+                }
             }
-        ) { state ->
+        ) { stateKey ->
+            val state = when {
+                stateKey == "BLACK" -> "BLACK"
+                stateKey == "OBRIGADO" -> "OBRIGADO"
+                stateKey.startsWith("QR_CODE") -> "QR_CODE"
+                stateKey.startsWith("IMAGE") -> "IMAGE"
+                stateKey == "WAITING" -> "WAITING"
+                else -> "CONNECT"
+            }
             when (state) {
                 "BLACK" -> {
                     Box(modifier = Modifier.fillMaxSize())
@@ -547,7 +580,7 @@ fun PassengerScreen() {
                                             modifier = Modifier
                                                 .size((absW / density).dp, (absH / density).dp)
                                                 .background(Color.White)
-                                                .padding(8.dp),
+                                                .padding(0.dp), // ZERADO
                                             contentAlignment = Alignment.Center
                                         ) {
                                             if (qrBitmap != null) {
@@ -611,17 +644,13 @@ fun PassengerScreen() {
                                         ) {
                                             androidx.compose.material3.ElevatedCard(
                                                 modifier = Modifier
-                                                    .weight(1.2f)
-                                                    .fillMaxHeight(),
-                                                shape = RoundedCornerShape(24.dp),
-                                                colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-                                                    containerColor = Color.White
-                                                )
+                                                    .fillMaxHeight(0.95f)
+                                                    .aspectRatio(1f), // QUADRADO PERFEITO
+                                                shape = RoundedCornerShape(20.dp),
+                                                colors = androidx.compose.material3.CardDefaults.elevatedCardColors(containerColor = Color.White)
                                             ) {
                                                 Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .padding(16.dp),
+                                                    modifier = Modifier.fillMaxSize().padding(0.dp), // ZERADO
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     if (qrBitmap != null) {
@@ -631,8 +660,6 @@ fun PassengerScreen() {
                                                             modifier = Modifier.fillMaxSize(),
                                                             contentScale = ContentScale.Fit
                                                         )
-                                                    } else {
-                                                        Text("Erro ao gerar QR Code", color = Color.Red)
                                                     }
                                                 }
                                             }
@@ -666,15 +693,14 @@ fun PassengerScreen() {
                                         ) {
                                             androidx.compose.material3.ElevatedCard(
                                                 modifier = Modifier
-                                                    .size(280.dp)
+                                                    .size((280 * qrCodeScale).dp)
+                                                    .aspectRatio(1f)
                                                     .align(Alignment.CenterHorizontally),
-                                                shape = RoundedCornerShape(24.dp),
-                                                colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-                                                    containerColor = Color.White
-                                                )
+                                                shape = RoundedCornerShape(20.dp),
+                                                colors = androidx.compose.material3.CardDefaults.elevatedCardColors(containerColor = Color.White)
                                             ) {
                                                 Box(
-                                                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                                                    modifier = Modifier.fillMaxSize().padding(0.dp), // ZERADO
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     if (qrBitmap != null) {
@@ -684,8 +710,6 @@ fun PassengerScreen() {
                                                             modifier = Modifier.fillMaxSize(),
                                                             contentScale = ContentScale.Fit
                                                         )
-                                                    } else {
-                                                        Text("Erro ao gerar QR Code", color = Color.Red)
                                                     }
                                                 }
                                             }
@@ -716,14 +740,14 @@ fun PassengerScreen() {
                                         verticalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
                                         androidx.compose.material3.ElevatedCard(
-                                            modifier = Modifier.size(280.dp),
+                                            modifier = Modifier
+                                                .size((320 * qrCodeScale).dp)
+                                                .aspectRatio(1f), // QUADRADO PERFEITO
                                             shape = RoundedCornerShape(24.dp),
-                                            colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
-                                                containerColor = Color.White
-                                            )
+                                            colors = androidx.compose.material3.CardDefaults.elevatedCardColors(containerColor = Color.White)
                                         ) {
                                             Box(
-                                                modifier = Modifier.fillMaxSize().padding(16.dp),
+                                                modifier = Modifier.fillMaxSize().padding(0.dp), // ZERADO
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 if (qrBitmap != null) {
@@ -733,8 +757,6 @@ fun PassengerScreen() {
                                                         modifier = Modifier.fillMaxSize(),
                                                         contentScale = ContentScale.Fit
                                                     )
-                                                } else {
-                                                    Text("Erro ao gerar QR Code", color = Color.Red)
                                                 }
                                             }
                                         }
