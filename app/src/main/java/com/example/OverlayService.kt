@@ -92,6 +92,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MyApplicationTheme
 import com.example.utils.getLocalIpAddress
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Android
 
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -225,44 +226,47 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         if (isAutoScanEnabled.value) {
             val target = targetPackageFlow.value
             val currentPkg = debugPackageName.value
-            
-            if (target.isEmpty() || target == currentPkg) {
-                // Palavras-chave para a tela de cobrança da Uber/99
-                val keywords = listOf("dinheiro ou pix", "expira em", "cobrar do", "copiar codigo")
-                
-                val rootNode = rootInActiveWindow
-                
-                // --- ADICIONE ESTA LINHA PARA IMPRIMIR NO LOGCAT ---
-                logAllScreenTexts(rootNode)
-                
-                val isChargingScreen = findKeywordInNode(rootNode, keywords)
-                
-                Log.d("PixDebugScanner", "Tela de cobrança detectada? $isChargingScreen | Pacote ativo: $currentPkg")
-                rootNode?.recycle() // Importante liberar memória
 
-                val now = System.currentTimeMillis()
-                val intervalMs = autoScanIntervalFlow.value * 60 * 1000L
+            if (autoScanModeFlow.value == "KEYWORD") {
+                if (target.isEmpty() || target == currentPkg || currentPkg == "Aguardando...") {
+                    // Palavras-chave para a tela de cobrança da Uber/99
+                    val keywords = listOf("dinheiro ou pix", "expira em", "cobrar do", "copiar codigo")
+                    
+                    val rootNode = rootInActiveWindow
+                    
+                    // --- ADICIONE ESTA LINHA PARA IMPRIMIR NO LOGCAT ---
+                    logAllScreenTexts(rootNode)
+                    
+                    val isChargingScreen = findKeywordInNode(rootNode, keywords)
+                    
+                    Log.d("PixDebugScanner", "Tela de cobrança detectada? $isChargingScreen | Pacote ativo: $currentPkg")
+                    rootNode?.recycle() // Importante liberar memória
 
-                if (isChargingScreen) {
-                    if (now - lastQrCodeFoundTime >= intervalMs) {
-                        if (now - lastCaptureTime >= 2000) {
-                            lastCaptureTime = now
-                            isAutoScanPaused.value = false
-                            captureScreenAndSend(isSilent = true)
+                    val now = System.currentTimeMillis()
+                    val intervalMs = autoScanIntervalFlow.value * 60 * 1000L
+
+                    if (isChargingScreen) {
+                        if (now - lastQrCodeFoundTime >= intervalMs) {
+                            if (now - lastCaptureTime >= 2000) {
+                                lastCaptureTime = now
+                                isAutoScanPaused.value = false
+                                captureScreenAndSend(isSilent = true)
+                            }
+                        } else {
+                            isAutoScanPaused.value = true
                         }
                     } else {
-                        isAutoScanPaused.value = true
+                        // Motorista saiu da tela de cobrança, resetar para a próxima corrida
+                        if (isAutoScanPaused.value) {
+                            lastQrCodeFoundTime = 0
+                            isAutoScanPaused.value = false
+                            cooldownTimerJob?.cancel()
+                            showOverlayToast("Auto-Scan pronto para próxima corrida")
+                        }
                     }
                 } else {
-                    // Motorista saiu da tela de cobrança, resetar para a próxima corrida
-                    if (isAutoScanPaused.value) {
-                        lastQrCodeFoundTime = 0
-                        isAutoScanPaused.value = false
-                        showOverlayToast("Auto-Scan pronto para próxima corrida")
-                    }
+                    isAutoScanPaused.value = true
                 }
-            } else {
-                isAutoScanPaused.value = true
             }
         }
     }
@@ -296,6 +300,11 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
     private val autoScanIntervalFlow = kotlinx.coroutines.flow.MutableStateFlow(10)
     private val qrScaleFactorFlow = kotlinx.coroutines.flow.MutableStateFlow(0.5f)
     private val qrEngineFlow = kotlinx.coroutines.flow.MutableStateFlow("MLKIT")
+
+    // NOVAS CONFIGURAÇÕES DE TOQUE EXTERNO E GESTOS
+    private val autoScanModeFlow = kotlinx.coroutines.flow.MutableStateFlow("KEYWORD")
+    private val touchScanDurationFlow = kotlinx.coroutines.flow.MutableStateFlow(5)
+
     private lateinit var prefsListener: android.content.SharedPreferences.OnSharedPreferenceChangeListener
     private var autoScanJob: Job? = null
     private var lastQrCodeFoundTime: Long = 0
@@ -318,9 +327,17 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         if (isAutoScanEnabled.value) {
             lastQrCodeFoundTime = 0 // Reset pause
             isAutoScanPaused.value = false
-            showOverlayToast("Auto-Scan ativado")
+            cooldownTimerJob?.cancel() // Cancel running timer
+            val mode = autoScanModeFlow.value
+            val msg = when (mode) {
+                "KEYWORD" -> "Auto-Scan por texto ativo"
+                "TOUCH" -> "Auto-Scan por toque ativo (toque fora da bolha)"
+                else -> "Auto-Scan ativado"
+            }
+            showOverlayToast(msg)
         } else {
             isAutoScanPaused.value = false
+            cooldownTimerJob?.cancel() // Cancel running timer
             showOverlayToast("Auto-Scan desativado")
         }
     }
@@ -346,6 +363,10 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         qrScaleFactorFlow.value = prefs.getFloat("QR_SCALE_FACTOR", 0.5f)
         qrEngineFlow.value = prefs.getString("QR_ENGINE", "MLKIT") ?: "MLKIT"
 
+        // LEITURA INICIAL DAS NOVAS VARIÁVEIS
+        autoScanModeFlow.value = prefs.getString("AUTO_SCAN_MODE", "KEYWORD") ?: "KEYWORD"
+        touchScanDurationFlow.value = (prefs.getString("TOUCH_SCAN_DURATION", "5") ?: "5").toIntOrNull() ?: 5
+
         prefsListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
             when (key) {
                 "TARGET_PACKAGE" -> targetPackageFlow.value = sharedPreferences?.getString(key, "") ?: ""
@@ -353,6 +374,9 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                 "AUTO_SCAN_INTERVAL" -> autoScanIntervalFlow.value = (sharedPreferences?.getString(key, "10") ?: "10").toIntOrNull() ?: 10
                 "QR_SCALE_FACTOR" -> qrScaleFactorFlow.value = sharedPreferences?.getFloat(key, 0.5f) ?: 0.5f
                 "QR_ENGINE" -> qrEngineFlow.value = sharedPreferences?.getString(key, "MLKIT") ?: "MLKIT"
+                // OUVINTE DE ALTERAÇÃO DOS NOVOS MODOS
+                "AUTO_SCAN_MODE" -> autoScanModeFlow.value = sharedPreferences?.getString(key, "KEYWORD") ?: "KEYWORD"
+                "TOUCH_SCAN_DURATION" -> touchScanDurationFlow.value = (sharedPreferences?.getString(key, "5") ?: "5").toIntOrNull() ?: 5
             }
         }
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
@@ -363,7 +387,10 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or 
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or 
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -374,6 +401,13 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+
+        // Inicializa o pacote atual com o pacote ativo no momento da conexão
+        rootInActiveWindow?.packageName?.toString()?.let { activePkg ->
+            if (activePkg != packageName) {
+                debugPackageName.value = activePkg
+            }
+        }
 
         scope.launch {
             val prefs = getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
@@ -408,6 +442,17 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
 
     private fun createComposeView(): ComposeView {
         val view = ComposeView(this)
+
+        // Configura o interceptor de toques externos (FLAG_WATCH_OUTSIDE_TOUCH)
+        view.setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_OUTSIDE) {
+                if (isAutoScanEnabled.value && autoScanModeFlow.value == "TOUCH") {
+                    triggerTouchBurstScan()
+                }
+            }
+            false
+        }
+
         view.apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
@@ -442,6 +487,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                             when (action) {
                                 is OverlayAction.Close -> hideBubble()
                                 is OverlayAction.ToggleAutoScan -> toggleAutoScan()
+                                is OverlayAction.TriggerBurstScan -> startBurstScan()
                                 is OverlayAction.Drag -> {
                                     windowParams.x = (windowParams.x + action.dx).toInt()
                                     windowParams.y = (windowParams.y + action.dy).toInt()
@@ -618,7 +664,70 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         TcpServer.stopServer()
         com.example.network.BluetoothServerHelper.stopBluetoothServer()
         com.example.network.UdpDiscovery.stopDiscoveryServer()
+        burstScanJob?.cancel()
+        touchBurstScanJob?.cancel()
+        cooldownTimerJob?.cancel()
         scope.cancel()
+    }
+
+    private var touchBurstScanJob: Job? = null
+    private var cooldownTimerJob: Job? = null
+    private var lastTouchScanTime: Long = 0
+
+    private fun startAutoScanCooldownTimer() {
+        cooldownTimerJob?.cancel()
+        cooldownTimerJob = scope.launch {
+            val intervalMs = autoScanIntervalFlow.value * 60 * 1000L
+            delay(intervalMs)
+            withContext(Dispatchers.Main) {
+                if (isAutoScanPaused.value) {
+                    lastQrCodeFoundTime = 0
+                    isAutoScanPaused.value = false
+                    showOverlayToast("Auto-Scan pronto para próxima corrida")
+                }
+            }
+        }
+    }
+
+    // Executa capturas rápidas consecutivas ao detectar toque na tela fora do overlay
+    private fun triggerTouchBurstScan() {
+        val now = System.currentTimeMillis()
+
+        // 1. Verificar o intervalo de cooldown definido nas configurações
+        val intervalMs = autoScanIntervalFlow.value * 60 * 1000L
+        if (now - lastQrCodeFoundTime < intervalMs) {
+            Log.d("PixDebugScanner", "Toque ignorado: ainda dentro do intervalo de pausa da última corrida (${(intervalMs - (now - lastQrCodeFoundTime)) / 1000}s restantes)")
+            return
+        }
+
+        if (now - lastTouchScanTime < 2000) return // Throttle para evitar cliques múltiplos em sequência
+        lastTouchScanTime = now
+
+        touchBurstScanJob?.cancel()
+        touchBurstScanJob = scope.launch {
+            val durationSeconds = touchScanDurationFlow.value
+            for (second in 1..durationSeconds) {
+                if (!isActive) break
+                captureScreenAndSend(isSilent = true)
+                delay(1000L)
+            }
+        }
+    }
+
+    private var burstScanJob: Job? = null
+
+    // Varredura por gesto na bolha
+    private fun startBurstScan() {
+        burstScanJob?.cancel()
+        burstScanJob = scope.launch {
+            showOverlayToast("Iniciando varredura rápida (10s)...")
+            for (second in 1..10) {
+                if (!isActive) break
+                captureScreenAndSend(isSilent = true)
+                delay(1000L)
+            }
+            showOverlayToast("Varredura rápida finalizada.")
+        }
     }
 
     private fun captureScreenAndSend(isSilent: Boolean = false) {
@@ -697,6 +806,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                                 lastQrCodeFoundTime = System.currentTimeMillis()
                                                 isAutoScanPaused.value = true
                                                 showOverlayToast("QR Code detectado automaticamente!")
+                                                startAutoScanCooldownTimer()
                                             }
                                         }
                                         TcpServer.sendCommandAndText("CMD_EXIBIR_PIX", qrText)
@@ -765,6 +875,7 @@ sealed class OverlayAction {
     data object ScanLogs : OverlayAction()
     data object CloseLogsDialog : OverlayAction()
     data object ToggleBluetoothServer : OverlayAction()
+    data object TriggerBurstScan : OverlayAction()
 }
 
 @Composable
@@ -798,6 +909,9 @@ fun OverlayWidget(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(16.dp)
         ) {
+            var totalDragX by remember { mutableStateOf(0f) }
+            var totalDragY by remember { mutableStateOf(0f) }
+
             Surface(
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primaryContainer,
@@ -805,10 +919,28 @@ fun OverlayWidget(
                 modifier = Modifier
                     .size(64.dp)
                     .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            onAction(OverlayAction.Drag(dragAmount.x, dragAmount.y))
-                        }
+                        detectDragGestures(
+                            onDragStart = {
+                                totalDragX = 0f
+                                totalDragY = 0f
+                            },
+                            onDragEnd = {
+                                if (totalDragX > 100f && kotlin.math.abs(totalDragY) < 60f) {
+                                    Log.d("PixDebugScanner", "Gesto detectado: Swipe Esquerda -> Direita ($totalDragX px, dy=$totalDragY)")
+                                    onAction(OverlayAction.TriggerBurstScan)
+                                }
+                            },
+                            onDragCancel = {
+                                totalDragX = 0f
+                                totalDragY = 0f
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                totalDragX += dragAmount.x
+                                totalDragY += dragAmount.y
+                                onAction(OverlayAction.Drag(dragAmount.x, dragAmount.y))
+                            }
+                        )
                     }
                     .clickable { 
                         expanded = !expanded 
@@ -932,7 +1064,7 @@ fun OverlayWidget(
                         ) {
                             Box(modifier = Modifier.weight(1f)) {
                                 MenuActionButton(
-                                    icon = Icons.Default.DirectionsCar,
+                                    icon = Icons.Default.Android,
                                     label = "Abrir App",
                                     tint = Color(0xFF4DD0E1),
                                     onClick = { 

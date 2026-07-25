@@ -120,6 +120,9 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
     var qrScaleFactor by remember { mutableStateOf(prefs.getFloat("QR_SCALE_FACTOR", 0.5f)) }
     var qrEngine by remember { mutableStateOf(prefs.getString("QR_ENGINE", "MLKIT") ?: "MLKIT") }
     
+    var autoScanMode by remember { mutableStateOf(prefs.getString("AUTO_SCAN_MODE", "KEYWORD") ?: "KEYWORD") }
+    var touchScanDuration by remember { mutableStateOf(prefs.getString("TOUCH_SCAN_DURATION", "5") ?: "5") }
+    
     var passengerOrientation by remember { mutableStateOf(prefs.getString("PASSENGER_ORIENTATION", "LANDSCAPE") ?: "LANDSCAPE") }
     var displayMode by remember { mutableStateOf(prefs.getString("PASSENGER_DISPLAY_MODE", "FULLSCREEN") ?: "FULLSCREEN") }
     
@@ -618,6 +621,87 @@ fun SettingsScreen(onBack: () -> Unit, onNavigateToPartialSetup: () -> Unit) {
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Modo de Auto-Scan", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                        Text("Escolha como o aplicativo detecta a corrida.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                        
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val scanModes = listOf(
+                                "KEYWORD" to "Palavra-Chave / Texto",
+                                "TOUCH" to "Toque na Tela"
+                            )
+                            scanModes.forEach { (value, label) ->
+                                androidx.compose.material3.Card(
+                                    onClick = {
+                                        autoScanMode = value
+                                        prefs.edit().putString("AUTO_SCAN_MODE", value).apply()
+                                    },
+                                    modifier = Modifier.weight(1f).height(40.dp),
+                                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                                        containerColor = if (autoScanMode == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = if (autoScanMode == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                    )
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Text(
+                                            label,
+                                            color = if (autoScanMode == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (autoScanMode == "TOUCH") {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Duração da Varredura por Toque (segundos)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                            Text("Tempo que o aplicativo passará tirando prints após um toque fora da bolha.", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                            
+                            androidx.compose.foundation.layout.Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                val durations = listOf("3" to "3s", "5" to "5s", "10" to "10s", "15" to "15s")
+                                durations.forEach { (value, label) ->
+                                    androidx.compose.material3.Card(
+                                        onClick = {
+                                            touchScanDuration = value
+                                            prefs.edit().putString("TOUCH_SCAN_DURATION", value).apply()
+                                        },
+                                        modifier = Modifier.weight(1f).height(40.dp),
+                                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                                            containerColor = if (touchScanDuration == value) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                                        ),
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            width = 1.dp,
+                                            color = if (touchScanDuration == value) MaterialTheme.colorScheme.primary else Color.Transparent
+                                        )
+                                    ) {
+                                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            Text(
+                                                label,
+                                                color = if (touchScanDuration == value) MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     androidx.compose.material3.Card(
                         modifier = Modifier.fillMaxWidth(),
