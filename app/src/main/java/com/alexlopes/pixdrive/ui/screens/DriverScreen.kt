@@ -1,477 +1,787 @@
 package com.alexlopes.pixdrive.ui.screens
 
-import android.content.res.Configuration
-import androidx.compose.ui.platform.LocalConfiguration
-import android.app.Activity
-import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
-import android.content.Intent
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Star
-import com.alexlopes.pixdrive.network.TcpServer
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import android.graphics.BitmapFactory
-import android.os.Build
-import android.view.WindowManager
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.foundation.text.selection.SelectionContainer
-import com.alexlopes.pixdrive.network.TcpClient
-import kotlinx.coroutines.launch
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
-import android.content.ContextWrapper
-import android.os.Bundle
-import android.content.pm.ActivityInfo
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import android.content.Intent
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.animation.togetherWith
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PhonelinkErase
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.WifiTethering
-import androidx.compose.material.icons.filled.WifiTetheringOff
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.RepeatMode
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import androidx.compose.foundation.clickable
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.border
-import com.alexlopes.pixdrive.ui.theme.MyApplicationTheme
-
-import com.alexlopes.pixdrive.utils.*
-import com.alexlopes.pixdrive.OverlayService
 import com.alexlopes.pixdrive.ImageRepository
+import com.alexlopes.pixdrive.OverlayService
+import com.alexlopes.pixdrive.network.TcpServer
+import com.alexlopes.pixdrive.utils.isAccessibilityServiceEnabled
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
+private enum class ServerActionState {
+    Idle,
+    Starting,
+    Error,
+}
+
+private enum class QuickAction {
+    CapturePix,
+    ClearPassengerScreen,
+}
+
+internal fun connectedDevicesLabel(count: Int): String = when (count) {
+    0 -> "Nenhum dispositivo conectado"
+    1 -> "1 dispositivo conectado"
+    else -> "$count dispositivos conectados"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun DriverScreen(
     onSettings: () -> Unit = {},
     onMyPix: () -> Unit = {},
-    onMyWifi: () -> Unit = {}
+    onMyWifi: () -> Unit = {},
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val connectedClients by TcpServer.connectedClients.collectAsState()
+    val isServerRunning by TcpServer.isServerRunningState.collectAsState()
+    val serverAddress by TcpServer.serverAddress.collectAsState()
+    val lastImageBytes by ImageRepository.lastCapturedImage.collectAsState()
+    val prefs = remember {
+        context.getSharedPreferences("PixPrefs", Context.MODE_PRIVATE)
+    }
+    val port = remember {
+        prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080
+    }
+
+    var serverActionState by remember { mutableStateOf(ServerActionState.Idle) }
+    var activeQuickAction by remember { mutableStateOf<QuickAction?>(null) }
+    var showStopConfirmation by remember { mutableStateOf(false) }
+    var showAccessibilityDialog by remember { mutableStateOf(false) }
+    var captureTimeoutJob by remember { mutableStateOf<Job?>(null) }
+    var capturedImageAtRequest by remember { mutableStateOf<Int?>(null) }
     var hasOverlayPermission by remember {
         mutableStateOf(android.provider.Settings.canDrawOverlays(context))
     }
     var hasAccessibilityPermission by remember {
         mutableStateOf(isAccessibilityServiceEnabled(context, OverlayService::class.java))
     }
-    var showAccessibilityDialog by remember { mutableStateOf(false) }
-    val lastImageBytes by ImageRepository.lastCapturedImage.collectAsState()
-    val scrollState = rememberScrollState()
-    val connectedClients by TcpServer.connectedClients.collectAsState()
-    val isServerRunning by TcpServer.isServerRunningState.collectAsState()
-    val serverAddress by TcpServer.serverAddress.collectAsState()
-    val isBtServerRunning by com.alexlopes.pixdrive.network.BluetoothServerHelper.isBluetoothServerRunning.collectAsState()
-    val coroutineScope = rememberCoroutineScope()
 
-    val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
-    val hotspotSsid = remember { prefs.getString("HOTSPOT_SSID", "AL€X") ?: "AL€X" }
-    val hotspotPassword = remember { prefs.getString("HOTSPOT_PASSWORD", "qwertyuiop") ?: "qwertyuiop" }
-    val port = remember { prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080 }
-
-    var hasBluetoothPermission by remember { mutableStateOf(com.alexlopes.pixdrive.utils.hasBluetoothPermissions(context)) }
-    val bluetoothPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        hasBluetoothPermission = results.values.all { it }
-    }
-    
-    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    val settingsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
     ) {
         hasOverlayPermission = android.provider.Settings.canDrawOverlays(context)
-        hasAccessibilityPermission = isAccessibilityServiceEnabled(context, OverlayService::class.java)
+        hasAccessibilityPermission =
+            isAccessibilityServiceEnabled(context, OverlayService::class.java)
     }
 
-    LaunchedEffect(Unit) {
-        hasAccessibilityPermission = isAccessibilityServiceEnabled(context, OverlayService::class.java)
+    LaunchedEffect(isServerRunning) {
+        if (isServerRunning) {
+            serverActionState = ServerActionState.Idle
+        }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(scrollState),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        androidx.compose.material3.CenterAlignedTopAppBar(
-            title = { Text("Painel do Motorista") },
-            navigationIcon = {
-                androidx.compose.material3.IconButton(onClick = { /* ... */ }) {
-                    Icon(imageVector = Icons.Default.DirectionsCar, contentDescription = null)
-                }
-            },
-            actions = {
-                androidx.compose.material3.IconButton(onClick = onSettings) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Configurações"
-                    )
-                }
-            },
-            colors = androidx.compose.material3.TopAppBarDefaults.centerAlignedTopAppBarColors(
-                containerColor = Color.Transparent
-            )
-        )
+    LaunchedEffect(lastImageBytes) {
+        val requestHash = capturedImageAtRequest ?: return@LaunchedEffect
+        val newImageHash = lastImageBytes?.contentHashCode() ?: return@LaunchedEffect
+        if (activeQuickAction == QuickAction.CapturePix && newImageHash != requestHash) {
+            captureTimeoutJob?.cancel()
+            activeQuickAction = null
+            capturedImageAtRequest = null
+            snackbarHostState.showSnackbar("Pix capturado e enviado.")
+        }
+    }
 
-        Text(
-            "Ações rápidas",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .align(Alignment.Start)
-                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp)
-        )
-        androidx.compose.foundation.layout.Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            androidx.compose.material3.OutlinedCard(
-                onClick = onMyPix,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(100.dp)
-            ) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.QrCode,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Exibir Pix", style = MaterialTheme.typography.labelLarge)
-                    }
-                }
-            }
-            androidx.compose.material3.OutlinedCard(
-                onClick = onMyWifi,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(100.dp)
-            ) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Wifi,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Compartilhar Wi-Fi", style = MaterialTheme.typography.labelLarge)
-                    }
-                }
+    fun startServer() {
+        if (serverActionState == ServerActionState.Starting) return
+        serverActionState = ServerActionState.Starting
+        scope.launch {
+            TcpServer.startServer(context, port)
+            if (!TcpServer.isRunning) {
+                serverActionState = ServerActionState.Error
             }
         }
-        
-        // STATUS 1: Servidor de Transmissão (TCP)
-        androidx.compose.material3.Card(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = androidx.compose.material3.CardDefaults.cardColors(
-                containerColor = if (isServerRunning) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = if (isServerRunning) androidx.compose.material.icons.Icons.Default.WifiTethering else androidx.compose.material.icons.Icons.Default.WifiTetheringOff,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = if (isServerRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = if (isServerRunning) "Transmissão Ativa" else "Transmissão Parada",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = if (isServerRunning) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (isServerRunning) {
-                    Text("${connectedClients.size} dispositivo(s) conectado(s)", style = MaterialTheme.typography.bodyMedium)
-                    if (connectedClients.isNotEmpty()) {
-                        Text("IPs: ${connectedClients.joinToString(", ")}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                    }
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(
-                    onClick = {
-                        if (isServerRunning) {
-                            TcpServer.stopServer()
-                        } else {
-                            coroutineScope.launch {
-                                TcpServer.startServer(context, port)
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isServerRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text(if (isServerRunning) "Desligar Servidor" else "Iniciar Servidor")
-                }
-            }
-        }
+    }
 
-        // STATUS 2: Servidor Bluetooth Independente
-        androidx.compose.material3.Card(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = androidx.compose.material3.CardDefaults.cardColors(
-                containerColor = if (isBtServerRunning) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant
-            )
-        ) {
-            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Default.Bluetooth,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = if (isBtServerRunning) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = if (isBtServerRunning) "Pareamento BT Ativo" else "Pareamento BT Inativo",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = if (isBtServerRunning) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "Auxilia os passageiros a se conectarem no seu Wi-Fi.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(
-                    onClick = {
-                        if (isBtServerRunning) {
-                            com.alexlopes.pixdrive.network.BluetoothServerHelper.stopBluetoothServer()
-                        } else {
-                            if (com.alexlopes.pixdrive.utils.hasBluetoothPermissions(context)) {
-                                coroutineScope.launch {
-                                    com.alexlopes.pixdrive.network.BluetoothServerHelper.startBluetoothServer(
-                                        context = context,
-                                        ssid = hotspotSsid,
-                                        pass = hotspotPassword,
-                                        ip = serverAddress ?: getLocalIpAddress()
-                                    )
-                                }
-                            } else {
-                                bluetoothPermissionLauncher.launch(com.alexlopes.pixdrive.utils.bluetoothPermissionsList())
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isBtServerRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
-                    )
-                ) {
-                    Text(if (isBtServerRunning) "Desativar Bluetooth" else "Ativar Bluetooth")
-                }
-            }
+    fun copyIp() {
+        val ip = serverAddress ?: return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Endereço IP do servidor", ip))
+        scope.launch { snackbarHostState.showSnackbar("IP copiado") }
+    }
+
+    fun showBriefConfirmation(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    fun capturePix() {
+        if (activeQuickAction != null) return
+        if (!hasAccessibilityPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            showAccessibilityDialog = true
+            return
         }
-        
-        androidx.compose.material3.Surface(
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = androidx.compose.foundation.shape.CircleShape,
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            SelectionContainer {
-                Text(
-                    text = if (serverAddress != null) {
-                        "IP do servidor: $serverAddress"
-                    } else {
-                        "IP do servidor: desligado"
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-        
         if (!hasOverlayPermission) {
-            androidx.compose.material3.OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Permissão Inicial Necessária", style = MaterialTheme.typography.titleMedium)
-                    Text("Para criar a bolha flutuante, o aplicativo precisa da permissão de 'Sobreposição'.", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = {
-                        val intent = android.content.Intent(
-                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:${context.packageName}")
+            val intent = Intent(
+                android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                android.net.Uri.parse("package:${context.packageName}"),
+            )
+            settingsLauncher.launch(intent)
+            return
+        }
+
+        activeQuickAction = QuickAction.CapturePix
+        capturedImageAtRequest = lastImageBytes?.contentHashCode() ?: 0
+        context.startService(
+            Intent(context, OverlayService::class.java).putExtra("action", "CAPTURE_NOW"),
+        )
+        captureTimeoutJob?.cancel()
+        captureTimeoutJob = scope.launch {
+            delay(10_000)
+            if (activeQuickAction == QuickAction.CapturePix) {
+                activeQuickAction = null
+                capturedImageAtRequest = null
+                snackbarHostState.showSnackbar(
+                    message = "Não foi possível enviar. Verifique a conexão.",
+                    actionLabel = "Tentar novamente",
+                )
+            }
+        }
+    }
+
+    if (showAccessibilityDialog) {
+        AccessibilityDisclosureDialog(
+            onConfirm = {
+                showAccessibilityDialog = false
+                settingsLauncher.launch(
+                    Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS),
+                )
+            },
+            onDismiss = { showAccessibilityDialog = false },
+        )
+    }
+
+    if (showStopConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showStopConfirmation = false },
+            title = { Text("Encerrar servidor?") },
+            text = { Text("O dispositivo do passageiro será desconectado.") },
+            dismissButton = {
+                TextButton(onClick = { showStopConfirmation = false }) {
+                    Text("Cancelar")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showStopConfirmation = false
+                        serverActionState = ServerActionState.Idle
+                        TcpServer.stopServer()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text("Encerrar", fontWeight = FontWeight.SemiBold)
+                }
+            },
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Painel do Motorista",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
+                navigationIcon = {
+                    Icon(
+                        imageVector = Icons.Default.DirectionsCar,
+                        contentDescription = "Modo motorista",
+                        modifier = Modifier
+                            .padding(start = 20.dp, end = 12.dp)
+                            .size(28.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                },
+                actions = {
+                    IconButton(
+                        onClick = onSettings,
+                        modifier = Modifier.padding(end = 8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Configurações",
                         )
-                        launcher.launch(intent)
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Conceder Permissão")
                     }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.safeDrawing,
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(top = 8.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            ServerStatusCard(
+                isRunning = isServerRunning,
+                actionState = serverActionState,
+                connectedDevices = connectedClients.size,
+                serverAddress = serverAddress,
+                onCopyIp = ::copyIp,
+                onStartServer = ::startServer,
+            )
+
+            ConnectedDeviceSection(connectedClients = connectedClients)
+
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SectionTitle("Ações rápidas")
+                QuickActionsGrid(
+                    actionsEnabled = isServerRunning && connectedClients.isNotEmpty(),
+                    activeAction = activeQuickAction,
+                    onShowPix = {
+                        showBriefConfirmation("QR Pix exibido no dispositivo.")
+                        onMyPix()
+                    },
+                    onShareWifi = {
+                        showBriefConfirmation("Wi-Fi compartilhado.")
+                        onMyWifi()
+                    },
+                    onCapturePix = ::capturePix,
+                    onClearScreen = {
+                        if (activeQuickAction != null) return@QuickActionsGrid
+                        activeQuickAction = QuickAction.ClearPassengerScreen
+                        scope.launch {
+                            TcpServer.sendCommand("CMD_APAGAR_TELA")
+                            activeQuickAction = null
+                            snackbarHostState.showSnackbar(
+                                "Tela do passageiro apagada.",
+                            )
+                        }
+                    },
+                )
+                if (!isServerRunning || connectedClients.isEmpty()) {
+                    Text(
+                        text = "As ações estarão disponíveis quando um dispositivo estiver conectado.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
-        } else if (!hasAccessibilityPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            androidx.compose.material3.OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Configuração Final", style = MaterialTheme.typography.titleMedium)
-                    Text("Para capturar a tela anonimamente (sem pedir no Android), ative o serviço de Acessibilidade do 'PixDrive'.", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = {
-                        showAccessibilityDialog = true
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Habilitar Acessibilidade")
-                    }
+
+            if (isServerRunning) {
+                OutlinedButton(
+                    onClick = { showStopConfirmation = true },
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .height(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.error.copy(alpha = 0.55f),
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PowerSettingsNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Encerrar servidor", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
+    }
+}
 
-        if (showAccessibilityDialog) {
-            AccessibilityDisclosureDialog(
-                onConfirm = {
-                    showAccessibilityDialog = false
-                    val intent = android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    launcher.launch(intent)
-                },
-                onDismiss = {
-                    showAccessibilityDialog = false
+@Composable
+private fun ServerStatusCard(
+    isRunning: Boolean,
+    actionState: ServerActionState,
+    connectedDevices: Int,
+    serverAddress: String?,
+    onCopyIp: () -> Unit,
+    onStartServer: () -> Unit,
+) {
+    val isStarting = actionState == ServerActionState.Starting
+    val hasError = actionState == ServerActionState.Error
+    val statusText = when {
+        isRunning -> "Servidor ativo"
+        isStarting -> "Iniciando servidor..."
+        hasError -> "Não foi possível iniciar o servidor"
+        else -> "Servidor desligado"
+    }
+    val statusColor = when {
+        isRunning -> Color(0xFF2E7D32)
+        hasError -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                when {
+                    isStarting -> CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.5.dp,
+                    )
+                    hasError -> Icon(
+                        imageVector = Icons.Default.ErrorOutline,
+                        contentDescription = "Erro no servidor",
+                        tint = statusColor,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    else -> Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .background(statusColor, CircleShape)
+                            .semantics {
+                                contentDescription =
+                                    if (isRunning) "Servidor ativo" else "Servidor desligado"
+                            },
+                    )
                 }
-            )
-        } else if (!hasBluetoothPermission) {
-            androidx.compose.material3.OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Permissão de Bluetooth", style = MaterialTheme.typography.titleMedium)
-                    Text("Necessária para transmitir os ajustes de Wi-Fi aos passageiros de forma transparente.", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = {
-                        bluetoothPermissionLauncher.launch(com.alexlopes.pixdrive.utils.bluetoothPermissionsList())
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Conceder Permissão")
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (hasError) statusColor else MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (isRunning) {
+                        Text(
+                            text = connectedDevicesLabel(connectedDevices),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
+                }
+            }
+
+            if (isRunning) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "Endereço IP",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = onCopyIp,
+                            enabled = serverAddress != null,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                text = serverAddress ?: "Obtendo endereço...",
+                                modifier = Modifier.fillMaxWidth(),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        IconButton(
+                            onClick = onCopyIp,
+                            enabled = serverAddress != null,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copiar endereço IP",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            } else {
+                Button(
+                    onClick = onStartServer,
+                    enabled = !isStarting,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                ) {
+                    if (isStarting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    } else if (hasError) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = if (hasError) "Tentar novamente" else "Iniciar servidor",
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectedDeviceSection(connectedClients: List<String>) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle("Dispositivo conectado")
+        if (connectedClients.isEmpty()) {
+            OutlinedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = "Nenhum dispositivo conectado",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Verifique se o dispositivo do passageiro está na mesma rede.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         } else {
-            // Ações do Overlay
-            Text("Bolha Flutuante", style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.Start).padding(start = 8.dp, bottom = 8.dp))
-            androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Button(
-                    onClick = {
-                        val intent = Intent(context, OverlayService::class.java).apply { putExtra("action", "SHOW_BUBBLE") }
-                        context.startService(intent)
-                    },
-                    modifier = Modifier.weight(1f).height(56.dp)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Text("Ativar Overlay")
-                }
-                Button(
-                    onClick = {
-                        val intent = Intent(context, OverlayService::class.java).apply { putExtra("action", "HIDE_BUBBLE") }
-                        context.startService(intent)
-                    },
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("Desativar Overlay")
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Ações do Motorista
-            Text("Controles Remotos", style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.Start).padding(start = 8.dp, bottom = 8.dp))
-            androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                androidx.compose.material3.OutlinedCard(
-                    onClick = { coroutineScope.launch { TcpServer.sendCommand("CMD_LIMPAR_TELA") } },
-                    modifier = Modifier.weight(1f).height(100.dp)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(androidx.compose.material.icons.Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Limpar Imagem", style = MaterialTheme.typography.labelLarge)
-                        }
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primaryContainer,
+                                CircleShape,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Smartphone,
+                            contentDescription = "Dispositivo passageiro",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
                     }
-                }
-                androidx.compose.material3.OutlinedCard(
-                    onClick = { coroutineScope.launch { TcpServer.sendCommand("CMD_APAGAR_TELA") } },
-                    modifier = Modifier.weight(1f).height(100.dp)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(androidx.compose.material.icons.Icons.Default.PhonelinkErase, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text("Apagar Tela", style = MaterialTheme.typography.labelLarge)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Dispositivo passageiro",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(Color(0xFF2E7D32), CircleShape),
+                            )
+                            Text(
+                                text = "Conectado",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
                         }
+                        Text(
+                            text = buildString {
+                                append("Wi-Fi • ")
+                                append(connectedClients.first())
+                                if (connectedClients.size > 1) {
+                                    append(" • +${connectedClients.size - 1}")
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
         }
+    }
+}
 
-        val currentLastImageBytes = lastImageBytes
-        if (currentLastImageBytes != null) {
-            Spacer(modifier = Modifier.height(32.dp))
-            Text("Última Imagem Enviada", style = MaterialTheme.typography.titleMedium, modifier = Modifier.align(Alignment.Start).padding(start = 8.dp, bottom = 8.dp))
-            androidx.compose.material3.ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    val bitmap = BitmapFactory.decodeByteArray(currentLastImageBytes, 0, currentLastImageBytes.size)
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "Última Captura",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp)),
-                        contentScale = ContentScale.FillWidth
+@Composable
+private fun QuickActionsGrid(
+    actionsEnabled: Boolean,
+    activeAction: QuickAction?,
+    onShowPix: () -> Unit,
+    onShareWifi: () -> Unit,
+    onCapturePix: () -> Unit,
+    onClearScreen: () -> Unit,
+) {
+    BoxWithConstraints {
+        val singleColumn = maxWidth < 300.dp
+        if (singleColumn) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                QuickActionCard(
+                    label = "Exibir QR Pix",
+                    icon = Icons.Default.QrCode,
+                    primary = true,
+                    enabled = actionsEnabled,
+                    loading = false,
+                    onClick = onShowPix,
+                )
+                QuickActionCard(
+                    label = "Compartilhar Wi-Fi",
+                    icon = Icons.Default.Wifi,
+                    enabled = actionsEnabled,
+                    loading = false,
+                    onClick = onShareWifi,
+                )
+                QuickActionCard(
+                    label = "Capturar Pix",
+                    icon = Icons.Default.CameraAlt,
+                    enabled = actionsEnabled && activeAction == null,
+                    loading = activeAction == QuickAction.CapturePix,
+                    onClick = onCapturePix,
+                )
+                QuickActionCard(
+                    label = "Apagar tela",
+                    icon = Icons.Default.PhonelinkErase,
+                    enabled = actionsEnabled && activeAction == null,
+                    loading = activeAction == QuickAction.ClearPassengerScreen,
+                    onClick = onClearScreen,
+                )
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    QuickActionCard(
+                        label = "Exibir QR Pix",
+                        icon = Icons.Default.QrCode,
+                        primary = true,
+                        enabled = actionsEnabled,
+                        loading = false,
+                        modifier = Modifier.weight(1f),
+                        onClick = onShowPix,
+                    )
+                    QuickActionCard(
+                        label = "Compartilhar Wi-Fi",
+                        icon = Icons.Default.Wifi,
+                        enabled = actionsEnabled,
+                        loading = false,
+                        modifier = Modifier.weight(1f),
+                        onClick = onShareWifi,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    QuickActionCard(
+                        label = "Capturar Pix",
+                        icon = Icons.Default.CameraAlt,
+                        enabled = actionsEnabled && activeAction == null,
+                        loading = activeAction == QuickAction.CapturePix,
+                        modifier = Modifier.weight(1f),
+                        onClick = onCapturePix,
+                    )
+                    QuickActionCard(
+                        label = "Apagar tela",
+                        icon = Icons.Default.PhonelinkErase,
+                        enabled = actionsEnabled && activeAction == null,
+                        loading = activeAction == QuickAction.ClearPassengerScreen,
+                        modifier = Modifier.weight(1f),
+                        onClick = onClearScreen,
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
+
+@Composable
+private fun QuickActionCard(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    loading: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    primary: Boolean = false,
+) {
+    val containerColor = if (primary) {
+        MaterialTheme.colorScheme.primaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+    val contentColor = if (primary) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    Card(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(92.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = containerColor,
+            contentColor = contentColor,
+            disabledContainerColor = containerColor.copy(alpha = 0.45f),
+            disabledContentColor = contentColor.copy(alpha = 0.45f),
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (primary) 2.dp else 0.dp,
+            pressedElevation = 1.dp,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.5.dp,
+                    color = contentColor,
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    modifier = Modifier.size(24.dp),
+                    tint = if (primary) contentColor else MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onBackground,
+    )
 }

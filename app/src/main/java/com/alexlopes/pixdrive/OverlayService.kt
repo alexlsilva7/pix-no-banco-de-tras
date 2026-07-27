@@ -436,6 +436,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         when (intent?.getStringExtra("action")) {
             "SHOW_BUBBLE" -> showBubble()
             "HIDE_BUBBLE" -> hideBubble()
+            "CAPTURE_NOW" -> captureScreenAndSend()
         }
         return super.onStartCommand(intent, flags, startId)
     }
