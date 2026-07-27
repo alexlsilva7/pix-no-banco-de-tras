@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">Pix Banco Trás</string>
-    <string name="accessibility_service_description">Serviço utilizado exclusivamente para capturar e ler o código QR do Pix na tela de cobrança de corridas e exibi-lo ao passageiro via rede local.</string>
+    <string name="app_name">PixDrive</string>
+    <string name="accessibility_service_description">Serviço necessário para capturar a tela do PixDrive e exibir no visor do veículo.</string>
 </resources>

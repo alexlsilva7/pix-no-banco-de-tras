@@ -1,4 +1,4 @@
-package com.example.network
+package com.alexlopes.pixdrive.network
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter

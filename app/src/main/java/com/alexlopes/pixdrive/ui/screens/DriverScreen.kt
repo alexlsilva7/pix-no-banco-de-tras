@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.alexlopes.pixdrive.ui.screens
 
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
@@ -8,7 +8,7 @@ import android.content.ComponentName
 import android.content.Intent
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
-import com.example.network.TcpServer
+import com.alexlopes.pixdrive.network.TcpServer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,7 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.selection.SelectionContainer
-import com.example.network.TcpClient
+import com.alexlopes.pixdrive.network.TcpClient
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.ContextWrapper
@@ -90,15 +90,19 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
-import com.example.ui.theme.MyApplicationTheme
+import com.alexlopes.pixdrive.ui.theme.MyApplicationTheme
 
-import com.example.utils.*
-import com.example.OverlayService
-import com.example.ImageRepository
+import com.alexlopes.pixdrive.utils.*
+import com.alexlopes.pixdrive.OverlayService
+import com.alexlopes.pixdrive.ImageRepository
 
 @Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-fun DriverScreen() {
+fun DriverScreen(
+    onSettings: () -> Unit = {},
+    onMyPix: () -> Unit = {},
+    onMyWifi: () -> Unit = {}
+) {
     val context = LocalContext.current
     var hasOverlayPermission by remember {
         mutableStateOf(android.provider.Settings.canDrawOverlays(context))
@@ -107,13 +111,12 @@ fun DriverScreen() {
         mutableStateOf(isAccessibilityServiceEnabled(context, OverlayService::class.java))
     }
     var showAccessibilityDialog by remember { mutableStateOf(false) }
-    val ipAddress = remember { getLocalIpAddress() }
-    
     val lastImageBytes by ImageRepository.lastCapturedImage.collectAsState()
     val scrollState = rememberScrollState()
     val connectedClients by TcpServer.connectedClients.collectAsState()
     val isServerRunning by TcpServer.isServerRunningState.collectAsState()
-    val isBtServerRunning by com.example.network.BluetoothServerHelper.isBluetoothServerRunning.collectAsState()
+    val serverAddress by TcpServer.serverAddress.collectAsState()
+    val isBtServerRunning by com.alexlopes.pixdrive.network.BluetoothServerHelper.isBluetoothServerRunning.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
@@ -121,7 +124,7 @@ fun DriverScreen() {
     val hotspotPassword = remember { prefs.getString("HOTSPOT_PASSWORD", "qwertyuiop") ?: "qwertyuiop" }
     val port = remember { prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080 }
 
-    var hasBluetoothPermission by remember { mutableStateOf(com.example.utils.hasBluetoothPermissions(context)) }
+    var hasBluetoothPermission by remember { mutableStateOf(com.alexlopes.pixdrive.utils.hasBluetoothPermissions(context)) }
     val bluetoothPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
@@ -151,10 +154,67 @@ fun DriverScreen() {
                     Icon(imageVector = Icons.Default.DirectionsCar, contentDescription = null)
                 }
             },
+            actions = {
+                androidx.compose.material3.IconButton(onClick = onSettings) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Configurações"
+                    )
+                }
+            },
             colors = androidx.compose.material3.TopAppBarDefaults.centerAlignedTopAppBarColors(
                 containerColor = Color.Transparent
             )
         )
+
+        Text(
+            "Ações rápidas",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .align(Alignment.Start)
+                .padding(start = 8.dp, top = 8.dp, bottom = 8.dp)
+        )
+        androidx.compose.foundation.layout.Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            androidx.compose.material3.OutlinedCard(
+                onClick = onMyPix,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(100.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.QrCode,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Exibir Pix", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+            androidx.compose.material3.OutlinedCard(
+                onClick = onMyWifi,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(100.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Wifi,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Compartilhar Wi-Fi", style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        }
         
         // STATUS 1: Servidor de Transmissão (TCP)
         androidx.compose.material3.Card(
@@ -235,19 +295,19 @@ fun DriverScreen() {
                 Button(
                     onClick = {
                         if (isBtServerRunning) {
-                            com.example.network.BluetoothServerHelper.stopBluetoothServer()
+                            com.alexlopes.pixdrive.network.BluetoothServerHelper.stopBluetoothServer()
                         } else {
-                            if (com.example.utils.hasBluetoothPermissions(context)) {
+                            if (com.alexlopes.pixdrive.utils.hasBluetoothPermissions(context)) {
                                 coroutineScope.launch {
-                                    com.example.network.BluetoothServerHelper.startBluetoothServer(
+                                    com.alexlopes.pixdrive.network.BluetoothServerHelper.startBluetoothServer(
                                         context = context,
                                         ssid = hotspotSsid,
                                         pass = hotspotPassword,
-                                        ip = ipAddress
+                                        ip = serverAddress ?: getLocalIpAddress()
                                     )
                                 }
                             } else {
-                                bluetoothPermissionLauncher.launch(com.example.utils.bluetoothPermissionsList())
+                                bluetoothPermissionLauncher.launch(com.alexlopes.pixdrive.utils.bluetoothPermissionsList())
                             }
                         }
                     },
@@ -268,7 +328,11 @@ fun DriverScreen() {
         ) {
             SelectionContainer {
                 Text(
-                    text = "IP: $ipAddress",
+                    text = if (serverAddress != null) {
+                        "IP do servidor: $serverAddress"
+                    } else {
+                        "IP do servidor: desligado"
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -299,7 +363,7 @@ fun DriverScreen() {
             androidx.compose.material3.OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Configuração Final", style = MaterialTheme.typography.titleMedium)
-                    Text("Para capturar a tela anonimamente (sem pedir no Android), ative o serviço de Acessibilidade do 'Pix no Banco de Trás'.", style = MaterialTheme.typography.bodyMedium)
+                    Text("Para capturar a tela anonimamente (sem pedir no Android), ative o serviço de Acessibilidade do 'PixDrive'.", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = {
                         showAccessibilityDialog = true
@@ -328,7 +392,7 @@ fun DriverScreen() {
                     Text("Necessária para transmitir os ajustes de Wi-Fi aos passageiros de forma transparente.", style = MaterialTheme.typography.bodyMedium)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = {
-                        bluetoothPermissionLauncher.launch(com.example.utils.bluetoothPermissionsList())
+                        bluetoothPermissionLauncher.launch(com.alexlopes.pixdrive.utils.bluetoothPermissionsList())
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("Conceder Permissão")
                     }

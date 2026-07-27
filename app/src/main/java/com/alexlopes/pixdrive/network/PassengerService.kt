@@ -1,4 +1,4 @@
-package com.example.network
+package com.alexlopes.pixdrive.network
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -16,8 +16,8 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.example.MainActivity
-import com.example.PixActivity
+import com.alexlopes.pixdrive.MainActivity
+import com.alexlopes.pixdrive.PixActivity
 import kotlinx.coroutines.*
 
 class PassengerService : Service() {
@@ -26,8 +26,8 @@ class PassengerService : Service() {
         private const val CHANNEL_ID = "passenger_service_channel"
         private const val NOTIFICATION_ID = 2002
 
-        const val ACTION_START = "com.example.action.START_PASSENGER"
-        const val ACTION_STOP = "com.example.action.STOP_PASSENGER"
+        const val ACTION_START = "com.alexlopes.pixdrive.action.START_PASSENGER"
+        const val ACTION_STOP = "com.alexlopes.pixdrive.action.STOP_PASSENGER"
         
         const val EXTRA_IP = "extra_ip"
         const val EXTRA_PORT = "extra_port"
@@ -57,17 +57,19 @@ class PassengerService : Service() {
         val action = intent?.action ?: ACTION_START
         
         if (action == ACTION_STOP) {
-            stopForegroundService()
+            stopForegroundService(startId)
             return START_NOT_STICKY
         }
 
         val ip = intent?.getStringExtra(EXTRA_IP) ?: prefs.getString("LAST_IP", "") ?: ""
         val port = intent?.getIntExtra(EXTRA_PORT, 8080) ?: 8080
-        val autoReconnect = intent?.getBooleanExtra(EXTRA_AUTO_RECONNECT, true) ?: true
+        val autoReconnect = intent?.getBooleanExtra(EXTRA_AUTO_RECONNECT, false) ?: false
 
         // Inicialização obrigatória do serviço em primeiro plano para conformidade com Android 14+
         val notification = getNotification("Conectando ao painel do motorista...")
         startForeground(NOTIFICATION_ID, notification)
+        acquireLocks()
+        startWakeUpObserver()
         
         startConnectionLoop(ip, port, autoReconnect)
         
@@ -76,6 +78,9 @@ class PassengerService : Service() {
 
     private fun startConnectionLoop(targetIp: String, port: Int, autoReconnect: Boolean) {
         connectionJob?.cancel()
+        telemetryJob?.cancel()
+        UdpDiscovery.stopClientDiscovery()
+        TcpClient.disconnect()
         connectionJob = serviceScope.launch {
             // Observer reativo: atualiza a notificação assim que o estado de conexão mudar,
             // independente do connect() bloqueante.
@@ -88,6 +93,9 @@ class PassengerService : Service() {
                 }
             }
 
+            val lastKnownIp = targetIp.takeIf {
+                it.isNotEmpty() && it != "192.168."
+            }
             var currentIp = targetIp
             while (isActive) {
                 if (!TcpClient.isConnected.value) {
@@ -110,8 +118,26 @@ class PassengerService : Service() {
                             prefs.edit().putString("LAST_IP", discoveredIp).apply()
                             Log.d("PassengerService", "Motorista descoberto via UDP: $discoveredIp")
                             TcpClient.connect(discoveredIp, port)
-                        } else {
-                            delay(2000) // Backoff extra se falhar
+                        }
+
+                        // 3. Ao terminar a busca sem conexão, tenta novamente o
+                        // último endereço conhecido como fallback do ciclo.
+                        if (
+                            !TcpClient.isConnected.value &&
+                            discoveredIp == null &&
+                            lastKnownIp != null
+                        ) {
+                            currentIp = lastKnownIp
+                            updateNotification("Tentando último IP conhecido...")
+                            Log.d(
+                                "PassengerService",
+                                "Busca concluída; tentando novamente o último IP: $lastKnownIp"
+                            )
+                            TcpClient.connect(lastKnownIp, port)
+                        }
+
+                        if (!TcpClient.isConnected.value) {
+                            delay(2000) // Backoff extra antes do próximo ciclo
                         }
                     } else if (!TcpClient.isConnected.value && !autoReconnect) {
                         break
@@ -120,6 +146,9 @@ class PassengerService : Service() {
                     // Mantém o laço ativo enquanto a conexão estiver ativa
                     while (TcpClient.isConnected.value && isActive) {
                         delay(1000)
+                    }
+                    if (!autoReconnect) {
+                        break
                     }
                 }
             }
@@ -160,7 +189,7 @@ class PassengerService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Pix no Banco de Trás - Passageiro")
+            .setContentTitle("PixDrive - Visor Traseiro")
             .setContentText(content)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
@@ -221,20 +250,30 @@ class PassengerService : Service() {
         }
     }
 
-    private fun stopForegroundService() {
+    private fun stopForegroundService(startId: Int? = null) {
         connectionJob?.cancel()
         telemetryJob?.cancel()
         wakeUpJob?.cancel()
+        UdpDiscovery.stopClientDiscovery()
         TcpClient.disconnect()
         releaseLocks()
         stopForeground(true)
-        stopSelf()
+        if (startId != null) {
+            stopSelf(startId)
+        } else {
+            stopSelf()
+        }
     }
 
     override fun onDestroy() {
-        super.onDestroy()
-        stopForegroundService()
+        connectionJob?.cancel()
+        telemetryJob?.cancel()
+        wakeUpJob?.cancel()
+        UdpDiscovery.stopClientDiscovery()
+        TcpClient.disconnect()
+        releaseLocks()
         serviceScope.cancel()
+        super.onDestroy()
     }
 
     /**

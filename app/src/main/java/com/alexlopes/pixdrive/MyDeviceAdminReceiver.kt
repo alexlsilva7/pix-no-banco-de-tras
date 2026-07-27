@@ -1,4 +1,4 @@
-package com.example
+package com.alexlopes.pixdrive
 
 import android.app.admin.DeviceAdminReceiver
 

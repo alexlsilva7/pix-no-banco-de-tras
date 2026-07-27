@@ -1,10 +1,11 @@
-package com.example.network
+package com.alexlopes.pixdrive.network
 
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.PowerManager
 import android.os.Build
 import android.util.Log
+import com.alexlopes.pixdrive.utils.getLocalIpAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,6 +17,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.DataOutputStream
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 
@@ -32,6 +35,9 @@ object TcpServer {
     private val _isServerRunningState = MutableStateFlow(false)
     val isServerRunningState: StateFlow<Boolean> = _isServerRunningState
 
+    private val _serverAddress = MutableStateFlow<String?>(null)
+    val serverAddress: StateFlow<String?> = _serverAddress
+
     private val _clientBatteryState = MutableStateFlow(-1)
     val clientBatteryState: StateFlow<Int> = _clientBatteryState
 
@@ -45,10 +51,22 @@ object TcpServer {
         if (isRunning) return@withContext
         acquireLocks(context)
         try {
-            serverSocket = ServerSocket(port)
+            val detectedIp = getLocalIpAddress()
+            val bindAddress = detectedIp
+                .takeUnless { it == "Desconhecido" }
+                ?.let(InetAddress::getByName)
+            val openedServerSocket = ServerSocket().apply {
+                reuseAddress = true
+                bind(InetSocketAddress(bindAddress, port))
+            }
+            serverSocket = openedServerSocket
+            _serverAddress.value = openedServerSocket.inetAddress.hostAddress
             isRunning = true
             _isServerRunningState.value = true
-            Log.d("TcpServer", "Servidor iniciado na porta $port")
+            Log.d(
+                "TcpServer",
+                "Servidor iniciado em ${_serverAddress.value}:$port"
+            )
 
             // Heartbeat silencioso
             serverScope.launch {
@@ -172,10 +190,9 @@ object TcpServer {
     }
 
     fun stopServer() {
-        if (!isRunning) return
-        
         isRunning = false
         _isServerRunningState.value = false
+        _serverAddress.value = null
         serverScope.coroutineContext.cancelChildren()
         releaseLocks()
 

@@ -48,7 +48,7 @@ function Deploy-And-Start($devices) {
         & $adb -s $dev install -r $apkPath
         
         Write-Host "Dispositivo ${dev}: Iniciando MainActivity..." -ForegroundColor Gray
-        & $adb -s $dev shell am start -n com.aistudio.pixbancotras.lxqtzj/com.example.MainActivity
+        & $adb -s $dev shell am start -n com.alexlopes.pixdrive/com.alexlopes.pixdrive.MainActivity
     }
     return $true
 }

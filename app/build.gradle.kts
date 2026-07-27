@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-  namespace = "com.example"
+  namespace = "com.alexlopes.pixdrive"
   compileSdk = 36
 
   defaultConfig {
-    applicationId = "com.aistudio.pixbancotras.lxqtzj"
+    applicationId = "com.alexlopes.pixdrive"
     minSdk = 24
     targetSdk = 36
     versionCode = 1

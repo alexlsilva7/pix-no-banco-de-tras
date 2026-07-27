@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.alexlopes.pixdrive.ui.screens
 
 import android.content.Context
 import android.content.pm.ActivityInfo
@@ -24,7 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.example.utils.getActivity
+import com.alexlopes.pixdrive.utils.getActivity
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -1,4 +1,4 @@
-package com.example.network
+package com.alexlopes.pixdrive.network
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +19,8 @@ object UdpDiscovery {
     
     private val _isClientListeningState = MutableStateFlow(false)
     val isClientListeningState: StateFlow<Boolean> = _isClientListeningState.asStateFlow()
+    @Volatile
+    private var clientSocket: DatagramSocket? = null
 
     // Chamado pelo Motorista (Servidor)
     suspend fun startDiscoveryServer() = withContext(Dispatchers.IO) {
@@ -64,6 +66,7 @@ object UdpDiscovery {
         var socket: DatagramSocket? = null
         try {
             socket = DatagramSocket()
+            clientSocket = socket
             socket.broadcast = true
             socket.soTimeout = 3000 // 3 segundos de timeout
 
@@ -91,9 +94,18 @@ object UdpDiscovery {
             Log.e("UdpDiscovery", "Erro ao buscar servidor UDP: ${e.message}")
         } finally {
             socket?.close()
+            if (clientSocket === socket) {
+                clientSocket = null
+            }
             _isClientListeningState.value = false
         }
         return@withContext null
+    }
+
+    fun stopClientDiscovery() {
+        clientSocket?.close()
+        clientSocket = null
+        _isClientListeningState.value = false
     }
 
     private fun getBroadcastAddress(): InetAddress? {

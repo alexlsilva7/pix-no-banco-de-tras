@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.alexlopes.pixdrive.ui.screens
 
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -18,7 +18,7 @@ fun AccessibilityDisclosureDialog(
         title = { Text("Uso do Serviço de Acessibilidade", color = Color.White) },
         text = {
             Text(
-                text = "O aplicativo 'Pix no Banco de Trás' requer a permissão de Acessibilidade para:\n\n" +
+                text = "O aplicativo 'PixDrive' requer a permissão de Acessibilidade para:\n\n" +
                        "• Capturar a tela anonimamente quando você acionar a busca de QR Code.\n" +
                        "• Ler e extrair dados da chave Pix da corrida (Uber/99).\n\n" +
                        "🔒 Privacidade Garantida: Nenhuma informação pessoal ou tela do seu dispositivo é gravada, salva ou enviada para a internet. Todos os dados permanecem estritamente dentro da rede Wi-Fi local do seu veículo.",

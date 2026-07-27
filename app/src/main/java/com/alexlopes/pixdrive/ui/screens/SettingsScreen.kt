@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.alexlopes.pixdrive.ui.screens
 
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
@@ -8,7 +8,7 @@ import android.content.ComponentName
 import android.content.Intent
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
-import com.example.network.TcpServer
+import com.alexlopes.pixdrive.network.TcpServer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.selection.SelectionContainer
-import com.example.network.TcpClient
+import com.alexlopes.pixdrive.network.TcpClient
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.ContextWrapper
@@ -94,18 +94,22 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
-import com.example.ui.theme.MyApplicationTheme
+import com.alexlopes.pixdrive.ui.theme.MyApplicationTheme
 
 
-import com.example.utils.*
-import com.example.MyDeviceAdminReceiver
-import com.example.OverlayService
+import com.alexlopes.pixdrive.utils.*
+import com.alexlopes.pixdrive.MyDeviceAdminReceiver
+import com.alexlopes.pixdrive.OverlayService
+import com.alexlopes.pixdrive.DeviceMode
 
 @Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 fun SettingsScreen(
     onBack: () -> Unit,
-    onNavigateToPartialSetup: () -> Unit
+    onNavigateToPartialSetup: () -> Unit,
+    currentMode: DeviceMode? = null,
+    onChangeMode: () -> Unit = {},
+    onResetApp: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
@@ -179,6 +183,7 @@ fun SettingsScreen(
     }
 
     var showAccessibilityDialog by remember { mutableStateOf(false) }
+    var showResetDialog by remember { mutableStateOf(false) }
 
 
 
@@ -209,6 +214,49 @@ fun SettingsScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1E1E1E), RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "Modo deste aparelho",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = when (currentMode) {
+                            DeviceMode.DRIVER -> "Motorista"
+                            DeviceMode.PASSENGER_DISPLAY -> "Visor do passageiro"
+                            null -> "Não definido"
+                        },
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White
+                    )
+                    Text(
+                        "A troca de modo mantém as configurações atuais.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                    Button(
+                        onClick = onChangeMode,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Alterar modo")
+                    }
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { showResetDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("Redefinir aplicativo")
+                    }
+                }
+
                 // Left Column: Network & Passenger
                 Column(
                     modifier = Modifier
@@ -1002,6 +1050,36 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showResetDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Redefinir aplicativo?") },
+            text = {
+                Text(
+                    "O modo e todas as preferências salvas serão apagados. " +
+                        "A tela de primeiro acesso aparecerá novamente."
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        showResetDialog = false
+                        onResetApp()
+                    }
+                ) {
+                    Text("Redefinir", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { showResetDialog = false }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 }
 

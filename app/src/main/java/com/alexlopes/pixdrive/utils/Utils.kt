@@ -1,4 +1,4 @@
-package com.example.utils
+package com.alexlopes.pixdrive.utils
 
 import android.content.Context
 import android.content.ContextWrapper
@@ -22,19 +22,56 @@ fun isAccessibilityServiceEnabled(context: Context, accessibilityService: Class<
     return false
 }
 
+internal data class LocalIpCandidate(
+    val interfaceName: String,
+    val hostAddress: String,
+    val isSiteLocal: Boolean
+)
+
+private fun interfacePriority(interfaceName: String): Int {
+    val name = interfaceName.lowercase()
+    return when {
+        name.startsWith("wlan") ||
+            name.startsWith("swlan") ||
+            name.contains("wifi") -> 500
+        name.startsWith("ap") -> 450
+        name.startsWith("eth") -> 400
+        name.startsWith("usb") -> 350
+        name.startsWith("rmnet") ||
+            name.startsWith("ccmni") ||
+            name.startsWith("pdp") -> 100
+        name.startsWith("tun") ||
+            name.startsWith("ppp") -> 50
+        else -> 300
+    }
+}
+
+internal fun selectPreferredLocalIp(candidates: List<LocalIpCandidate>): String? =
+    candidates.maxWithOrNull(
+        compareBy<LocalIpCandidate> { interfacePriority(it.interfaceName) }
+            .thenBy { if (it.isSiteLocal) 1 else 0 }
+    )?.hostAddress
+
 fun getLocalIpAddress(): String {
     try {
         val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+        val candidates = mutableListOf<LocalIpCandidate>()
         while (interfaces.hasMoreElements()) {
             val networkInterface = interfaces.nextElement()
+            if (!networkInterface.isUp || networkInterface.isLoopback) continue
             val addresses = networkInterface.inetAddresses
             while (addresses.hasMoreElements()) {
                 val address = addresses.nextElement()
-                if (!address.isLoopbackAddress && address.hostAddress?.indexOf(':') == -1) {
-                    return address.hostAddress ?: "0.0.0.0"
+                if (address is java.net.Inet4Address && !address.isLoopbackAddress) {
+                    candidates += LocalIpCandidate(
+                        interfaceName = networkInterface.name,
+                        hostAddress = address.hostAddress ?: continue,
+                        isSiteLocal = address.isSiteLocalAddress
+                    )
                 }
             }
         }
+        return selectPreferredLocalIp(candidates) ?: "Desconhecido"
     } catch (ex: java.net.SocketException) {
         ex.printStackTrace()
     }

@@ -1,4 +1,4 @@
-package com.example.utils
+package com.alexlopes.pixdrive.utils
 
 import android.content.Context
 import android.net.ConnectivityManager

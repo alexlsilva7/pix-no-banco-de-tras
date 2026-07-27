@@ -1,4 +1,4 @@
-package com.example
+package com.alexlopes.pixdrive
 
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
@@ -8,7 +8,7 @@ import android.content.ComponentName
 import android.content.Intent
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
-import com.example.network.TcpServer
+import com.alexlopes.pixdrive.network.TcpServer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.selection.SelectionContainer
-import com.example.network.TcpClient
+import com.alexlopes.pixdrive.network.TcpClient
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.ContextWrapper
@@ -91,27 +91,62 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
-import com.example.ui.theme.MyApplicationTheme
+import com.alexlopes.pixdrive.ui.theme.MyApplicationTheme
 
 
-import com.example.ui.screens.*
-import com.example.utils.*
+import com.alexlopes.pixdrive.ui.screens.*
+import com.alexlopes.pixdrive.utils.*
 
 const val ModeSelectionRoute = "mode_selection"
 const val DriverRoute = "driver"
 const val PassengerRoute = "passenger"
 const val SettingsRoute = "settings"
+const val ConfirmDriverRoute = "confirm_driver"
+const val ConfirmPassengerRoute = "confirm_passenger"
+const val ConfirmDriverChangeRoute = "confirm_driver_change"
+const val ConfirmPassengerChangeRoute = "confirm_passenger_change"
+const val DriverPermissionsRoute = "driver_permissions"
+const val PassengerPermissionsRoute = "passenger_permissions"
+const val DriverConnectionTestRoute = "driver_connection_test"
+const val PassengerConnectionTestRoute = "passenger_connection_test"
 const val MyPixQrCodeRoute = "my_pix_qr_code"
 const val MyWifiQrCodeRoute = "my_wifi_qr_code"
 const val PartialSetupRoute = "partial_setup"
 const val QrCodeSizeRoute = "qr_code_size"
 
 class MainActivity : ComponentActivity() {
+  private fun stopRuntimeFor(mode: DeviceMode?) {
+    when (mode) {
+      DeviceMode.DRIVER -> {
+        com.alexlopes.pixdrive.network.TcpServer.stopServer()
+        com.alexlopes.pixdrive.network.BluetoothServerHelper.stopBluetoothServer()
+        startService(
+          android.content.Intent(this, OverlayService::class.java).apply {
+            putExtra("action", "HIDE_BUBBLE")
+          }
+        )
+      }
+      DeviceMode.PASSENGER_DISPLAY -> {
+        com.alexlopes.pixdrive.network.TcpClient.disconnect()
+        startService(
+          android.content.Intent(
+            this,
+            com.alexlopes.pixdrive.network.PassengerService::class.java
+          ).apply {
+            action =
+              com.alexlopes.pixdrive.network.PassengerService.ACTION_STOP
+          }
+        )
+      }
+      null -> Unit
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     
     // Register callback to wake up screen when Pix is received
-    com.example.network.TcpClient.onExibirPixCallback = { cmd ->
+    com.alexlopes.pixdrive.network.TcpClient.onExibirPixCallback = { cmd ->
       try {
         val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
         @Suppress("DEPRECATION")
@@ -167,32 +202,157 @@ class MainActivity : ComponentActivity() {
     setContent {
       MyApplicationTheme {
         val navController = rememberNavController()
+        val initialMode = remember { DeviceModePreferences.get(this@MainActivity) }
+        val startRoute = when (initialMode) {
+          DeviceMode.DRIVER -> DriverRoute
+          DeviceMode.PASSENGER_DISPLAY -> PassengerRoute
+          null -> ModeSelectionRoute
+        }
+
+        fun openMain(mode: DeviceMode) {
+          val destination =
+            if (mode == DeviceMode.DRIVER) DriverRoute else PassengerRoute
+          navController.navigate(destination) {
+            popUpTo(ModeSelectionRoute) { inclusive = true }
+            launchSingleTop = true
+          }
+        }
         
         Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
           NavHost(
             navController = navController,
-            startDestination = ModeSelectionRoute,
+            startDestination = startRoute,
             modifier = Modifier.padding(innerPadding)
           ) {
             composable(ModeSelectionRoute) {
               ModeSelectionScreen(
-                onDriverSelected = { navController.navigate(DriverRoute) },
-                onPassengerSelected = { navController.navigate(PassengerRoute) },
-                onSettingsSelected = { navController.navigate(SettingsRoute) },
-                onMyPixQrCodeSelected = { navController.navigate(MyPixQrCodeRoute) },
-                onMyWifiQrCodeSelected = { navController.navigate(MyWifiQrCodeRoute) }
+                onDriverSelected = {
+                  val isChange = DeviceModePreferences.get(this@MainActivity) != null
+                  navController.navigate(
+                    if (isChange) ConfirmDriverChangeRoute else ConfirmDriverRoute
+                  )
+                },
+                onPassengerSelected = {
+                  val isChange = DeviceModePreferences.get(this@MainActivity) != null
+                  navController.navigate(
+                    if (isChange) ConfirmPassengerChangeRoute
+                    else ConfirmPassengerRoute
+                  )
+                }
               )
             }
             composable(DriverRoute) {
-              DriverScreen()
+              DriverScreen(
+                onSettings = { navController.navigate(SettingsRoute) },
+                onMyPix = { navController.navigate(MyPixQrCodeRoute) },
+                onMyWifi = { navController.navigate(MyWifiQrCodeRoute) }
+              )
             }
             composable(PassengerRoute) {
-              PassengerScreen()
+              PassengerScreen(
+                onSettings = { navController.navigate(SettingsRoute) }
+              )
+            }
+            composable(ConfirmDriverRoute) {
+              ModeConfirmationScreen(
+                mode = DeviceMode.DRIVER,
+                isModeChange = false,
+                onContinue = {
+                  stopRuntimeFor(DeviceModePreferences.get(this@MainActivity))
+                  DeviceModePreferences.set(this@MainActivity, DeviceMode.DRIVER)
+                  navController.navigate(DriverPermissionsRoute)
+                }
+              )
+            }
+            composable(ConfirmDriverChangeRoute) {
+              ModeConfirmationScreen(
+                mode = DeviceMode.DRIVER,
+                isModeChange = true,
+                onContinue = {
+                  stopRuntimeFor(DeviceModePreferences.get(this@MainActivity))
+                  DeviceModePreferences.set(this@MainActivity, DeviceMode.DRIVER)
+                  navController.navigate(DriverPermissionsRoute)
+                },
+                onCancel = { navController.popBackStack() }
+              )
+            }
+            composable(ConfirmPassengerRoute) {
+              ModeConfirmationScreen(
+                mode = DeviceMode.PASSENGER_DISPLAY,
+                isModeChange = false,
+                onContinue = {
+                  stopRuntimeFor(DeviceModePreferences.get(this@MainActivity))
+                  DeviceModePreferences.set(
+                    this@MainActivity,
+                    DeviceMode.PASSENGER_DISPLAY
+                  )
+                  navController.navigate(PassengerPermissionsRoute)
+                }
+              )
+            }
+            composable(ConfirmPassengerChangeRoute) {
+              ModeConfirmationScreen(
+                mode = DeviceMode.PASSENGER_DISPLAY,
+                isModeChange = true,
+                onContinue = {
+                  stopRuntimeFor(DeviceModePreferences.get(this@MainActivity))
+                  DeviceModePreferences.set(
+                    this@MainActivity,
+                    DeviceMode.PASSENGER_DISPLAY
+                  )
+                  navController.navigate(PassengerPermissionsRoute)
+                },
+                onCancel = { navController.popBackStack() }
+              )
+            }
+            composable(DriverPermissionsRoute) {
+              ModePermissionsScreen(
+                mode = DeviceMode.DRIVER,
+                onContinue = { navController.navigate(DriverConnectionTestRoute) }
+              )
+            }
+            composable(PassengerPermissionsRoute) {
+              ModePermissionsScreen(
+                mode = DeviceMode.PASSENGER_DISPLAY,
+                onContinue = { navController.navigate(PassengerConnectionTestRoute) }
+              )
+            }
+            composable(DriverConnectionTestRoute) {
+              ConnectionTestScreen(
+                mode = DeviceMode.DRIVER,
+                onFinish = { openMain(DeviceMode.DRIVER) }
+              )
+            }
+            composable(PassengerConnectionTestRoute) {
+              ConnectionTestScreen(
+                mode = DeviceMode.PASSENGER_DISPLAY,
+                onFinish = { openMain(DeviceMode.PASSENGER_DISPLAY) }
+              )
             }
             composable(SettingsRoute) {
               SettingsScreen(
                 onBack = { navController.popBackStack() },
-                onNavigateToPartialSetup = { navController.navigate(PartialSetupRoute) }
+                onNavigateToPartialSetup = { navController.navigate(PartialSetupRoute) },
+                currentMode = DeviceModePreferences.get(this@MainActivity),
+                onChangeMode = {
+                  navController.navigate(ModeSelectionRoute) {
+                    popUpTo(navController.graph.startDestinationId) {
+                      inclusive = true
+                    }
+                    launchSingleTop = true
+                  }
+                },
+                onResetApp = {
+                  stopRuntimeFor(DeviceModePreferences.get(this@MainActivity))
+                  getSharedPreferences(
+                    DeviceModePreferences.PREFERENCES_NAME,
+                    android.content.Context.MODE_PRIVATE
+                  ).edit().clear().apply()
+                  navController.navigate(ModeSelectionRoute) {
+                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                    launchSingleTop = true
+                  }
+                }
               )
             }
             composable(PartialSetupRoute) {
@@ -212,8 +372,8 @@ class MainActivity : ComponentActivity() {
 
   override fun onDestroy() {
     super.onDestroy()
-    if (com.example.network.TcpClient.onExibirPixCallback != null) {
-      com.example.network.TcpClient.onExibirPixCallback = null
+    if (com.alexlopes.pixdrive.network.TcpClient.onExibirPixCallback != null) {
+      com.alexlopes.pixdrive.network.TcpClient.onExibirPixCallback = null
     }
   }
 }

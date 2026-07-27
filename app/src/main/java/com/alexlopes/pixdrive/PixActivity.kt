@@ -1,8 +1,8 @@
-package com.example
+package com.alexlopes.pixdrive
 
 import android.os.Build
 import android.os.Bundle
-import com.example.ui.screens.*
+import com.alexlopes.pixdrive.ui.screens.*
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,8 +22,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import android.graphics.BitmapFactory
 import android.content.Context
-import com.example.network.TcpClient
-import com.example.ui.theme.MyApplicationTheme
+import com.alexlopes.pixdrive.network.TcpClient
+import com.alexlopes.pixdrive.ui.theme.MyApplicationTheme
 
 class PixActivity : ComponentActivity() {
 

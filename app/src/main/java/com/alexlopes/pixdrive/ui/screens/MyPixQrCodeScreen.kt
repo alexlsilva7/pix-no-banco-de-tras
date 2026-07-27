@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.alexlopes.pixdrive.ui.screens
 
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
@@ -8,7 +8,7 @@ import android.content.ComponentName
 import android.content.Intent
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
-import com.example.network.TcpServer
+import com.alexlopes.pixdrive.network.TcpServer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.selection.SelectionContainer
-import com.example.network.TcpClient
+import com.alexlopes.pixdrive.network.TcpClient
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.ContextWrapper
@@ -91,10 +91,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
-import com.example.ui.theme.MyApplicationTheme
+import com.alexlopes.pixdrive.ui.theme.MyApplicationTheme
 
 
-import com.example.utils.*
+import com.alexlopes.pixdrive.utils.*
 
 @Composable
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)

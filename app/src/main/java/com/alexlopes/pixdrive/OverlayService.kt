@@ -1,4 +1,4 @@
-package com.example
+package com.alexlopes.pixdrive
 
 import android.util.Log
 import android.accessibilityservice.AccessibilityService
@@ -18,7 +18,7 @@ import androidx.core.app.NotificationCompat
 import android.app.Activity
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.*
-import com.example.network.TcpServer
+import com.alexlopes.pixdrive.network.TcpServer
 import android.graphics.PixelFormat
 import android.os.IBinder
 import android.view.Gravity
@@ -89,8 +89,8 @@ import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.MyApplicationTheme
-import com.example.utils.getLocalIpAddress
+import com.alexlopes.pixdrive.ui.theme.MyApplicationTheme
+import com.alexlopes.pixdrive.utils.getLocalIpAddress
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Android
 
@@ -416,7 +416,7 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
             TcpServer.startServer(this@OverlayService, port)
         }
         scope.launch {
-            com.example.network.UdpDiscovery.startDiscoveryServer()
+            com.alexlopes.pixdrive.network.UdpDiscovery.startDiscoveryServer()
         }
 
         scope.launch {
@@ -591,11 +591,12 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
                                 }
                                 is OverlayAction.ToggleBluetoothServer -> {
                                     scope.launch {
-                                        if (com.example.network.BluetoothServerHelper.isBluetoothServerRunning.value) {
-                                            com.example.network.BluetoothServerHelper.stopBluetoothServer()
+                                        if (com.alexlopes.pixdrive.network.BluetoothServerHelper.isBluetoothServerRunning.value) {
+                                            com.alexlopes.pixdrive.network.BluetoothServerHelper.stopBluetoothServer()
                                         } else {
-                                            val ipAddress = getLocalIpAddress()
-                                            com.example.network.BluetoothServerHelper.startBluetoothServer(
+                                            val ipAddress =
+                                                TcpServer.serverAddress.value ?: getLocalIpAddress()
+                                            com.alexlopes.pixdrive.network.BluetoothServerHelper.startBluetoothServer(
                                                 context = this@OverlayService,
                                                 ssid = hotspotSsid,
                                                 pass = hotspotPassword,
@@ -662,8 +663,8 @@ class OverlayService : AccessibilityService(), LifecycleOwner, ViewModelStoreOwn
         hideBubble()
         store.clear()
         TcpServer.stopServer()
-        com.example.network.BluetoothServerHelper.stopBluetoothServer()
-        com.example.network.UdpDiscovery.stopDiscoveryServer()
+        com.alexlopes.pixdrive.network.BluetoothServerHelper.stopBluetoothServer()
+        com.alexlopes.pixdrive.network.UdpDiscovery.stopDiscoveryServer()
         burstScanJob?.cancel()
         touchBurstScanJob?.cancel()
         cooldownTimerJob?.cancel()
@@ -1083,7 +1084,7 @@ fun OverlayWidget(
                                 )
                             }
                             Box(modifier = Modifier.weight(1f)) {
-                                val isBtServerRunning by com.example.network.BluetoothServerHelper.isBluetoothServerRunning.collectAsState()
+                                val isBtServerRunning by com.alexlopes.pixdrive.network.BluetoothServerHelper.isBluetoothServerRunning.collectAsState()
                                 MenuActionButton(
                                     icon = Icons.Default.Bluetooth,
                                     label = if (isBtServerRunning) "Parar BT" else "Ligar BT",

@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.alexlopes.pixdrive.ui.screens
 
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
@@ -8,7 +8,7 @@ import android.content.ComponentName
 import android.content.Intent
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Star
-import com.example.network.TcpServer
+import com.alexlopes.pixdrive.network.TcpServer
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,7 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.text.selection.SelectionContainer
-import com.example.network.TcpClient
+import com.alexlopes.pixdrive.network.TcpClient
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.ContextWrapper
@@ -76,6 +76,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -103,7 +104,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
-import com.example.ui.theme.MyApplicationTheme
+import com.alexlopes.pixdrive.ui.theme.MyApplicationTheme
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -111,25 +112,166 @@ import kotlin.math.roundToInt
 
 
 import android.annotation.SuppressLint
-import com.example.utils.*
-import com.example.MyDeviceAdminReceiver
-import com.example.PixActivity
+import com.alexlopes.pixdrive.utils.*
+import com.alexlopes.pixdrive.MyDeviceAdminReceiver
+import com.alexlopes.pixdrive.PixActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import android.os.BatteryManager
 import android.content.IntentFilter
-import com.example.network.PassengerService
+import com.alexlopes.pixdrive.network.PassengerService
+
+private fun startPassengerConnection(
+    context: Context,
+    ip: String,
+    port: Int,
+    autoReconnect: Boolean
+) {
+    val intent = Intent(context, PassengerService::class.java).apply {
+        action = PassengerService.ACTION_START
+        putExtra(PassengerService.EXTRA_IP, ip)
+        putExtra(PassengerService.EXTRA_PORT, port)
+        putExtra(PassengerService.EXTRA_AUTO_RECONNECT, autoReconnect)
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(intent)
+    } else {
+        context.startService(intent)
+    }
+}
+
+private fun stopPassengerConnection(context: Context) {
+    com.alexlopes.pixdrive.network.UdpDiscovery.stopClientDiscovery()
+    context.startService(
+        Intent(context, PassengerService::class.java).apply {
+            action = PassengerService.ACTION_STOP
+        }
+    )
+}
 
 @Composable
-fun PassengerScreen() {
+private fun IpKeypadDialog(
+    initialValue: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var value by remember(initialValue) { mutableStateOf(initialValue) }
+    val keys = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf(".", "0", "⌫")
+    )
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        androidx.compose.material3.Surface(
+            modifier = Modifier
+                .widthIn(max = 270.dp)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xFF1E1E1E),
+            tonalElevation = 10.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    "IP do motorista",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White
+                )
+                androidx.compose.material3.Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(38.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF292929),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.DarkGray)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = value.ifEmpty { "0.0.0.0" },
+                            color = if (value.isEmpty()) Color.Gray else Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                }
+
+                keys.forEach { rowKeys ->
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowKeys.forEach { key ->
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = {
+                                    value = when (key) {
+                                        "⌫" -> value.dropLast(1)
+                                        "." -> if (
+                                            value.isNotEmpty() &&
+                                            !value.endsWith(".") &&
+                                            value.count { it == '.' } < 3 &&
+                                            value.length < 15
+                                        ) "$value." else value
+                                        else -> if (value.length < 15) value + key else value
+                                    }
+                                },
+                                modifier = Modifier.weight(1f).height(34.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                            ) {
+                                Text(key, style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
+                    }
+                }
+
+                androidx.compose.foundation.layout.Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    androidx.compose.material3.TextButton(
+                        onClick = { value = "" },
+                        modifier = Modifier.weight(1f).height(36.dp)
+                    ) {
+                        Text("Limpar")
+                    }
+                    androidx.compose.material3.TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f).height(36.dp)
+                    ) {
+                        Text("Cancelar")
+                    }
+                    Button(
+                        onClick = { onConfirm(value.trim('.')) },
+                        enabled = value.isNotBlank(),
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) {
+                        Text("OK")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PassengerScreen(
+    onSettings: () -> Unit = {}
+) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("PixPrefs", android.content.Context.MODE_PRIVATE) }
     var serverIp by remember { mutableStateOf(prefs.getString("LAST_IP", "192.168.") ?: "192.168.") }
-    val isDiscovering by com.example.network.UdpDiscovery.isClientListeningState.collectAsState()
+    val isDiscovering by com.alexlopes.pixdrive.network.UdpDiscovery.isClientListeningState.collectAsState()
     val scope = rememberCoroutineScope()
     
-    var autoReconnect by remember { mutableStateOf(prefs.getBoolean("AUTO_RECONNECT", true)) }
-    var connectionTrigger by remember { mutableStateOf(0) }
+    var autoReconnect by remember { mutableStateOf(prefs.getBoolean("AUTO_RECONNECT", false)) }
     
     val receivedImage by TcpClient.receivedImage.collectAsState()
     val qrCodeText by TcpClient.qrCodeText.collectAsState()
@@ -138,7 +280,6 @@ fun PassengerScreen() {
     
     val dpm = remember { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
     val adminComponent = remember { ComponentName(context, MyDeviceAdminReceiver::class.java) }
-    var isAdminActive by remember { mutableStateOf(dpm.isAdminActive(adminComponent)) }
     
     val passengerOrientation = remember { prefs.getString("PASSENGER_ORIENTATION", "LANDSCAPE") ?: "LANDSCAPE" }
     val displayMode = remember { prefs.getString("PASSENGER_DISPLAY_MODE", "FULLSCREEN") ?: "FULLSCREEN" }
@@ -147,12 +288,6 @@ fun PassengerScreen() {
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val screenWidthDp = configuration.screenWidthDp
     val useHorizontalLayout = isLandscape && screenWidthDp >= 640
-
-    val adminLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-    ) {
-        isAdminActive = dpm.isAdminActive(adminComponent)
-    }
 
     DisposableEffect(passengerOrientation) {
         val activity = context.getActivity()
@@ -186,22 +321,12 @@ fun PassengerScreen() {
     }
 
     // Gerenciador do ciclo de vida em background do Serviço persistente
-    LaunchedEffect(connectionTrigger, autoReconnect) {
+    LaunchedEffect(autoReconnect) {
         val currentPort = prefs.getString("PORT", "8080")?.toIntOrNull() ?: 8080
         val lastIp = prefs.getString("LAST_IP", "") ?: ""
         
-        if (autoReconnect || connectionTrigger > 0) {
-            val intent = Intent(context, PassengerService::class.java).apply {
-                action = PassengerService.ACTION_START
-                putExtra(PassengerService.EXTRA_IP, lastIp)
-                putExtra(PassengerService.EXTRA_PORT, currentPort)
-                putExtra(PassengerService.EXTRA_AUTO_RECONNECT, autoReconnect)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+        if (autoReconnect) {
+            startPassengerConnection(context, lastIp, currentPort, autoReconnect = true)
         }
     }
 
@@ -878,18 +1003,41 @@ fun PassengerScreen() {
                             color = Color.White.copy(alpha = alpha),
                             style = MaterialTheme.typography.headlineSmall
                         )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        androidx.compose.foundation.layout.Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.IconButton(onClick = onSettings) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Configurações",
+                                    tint = Color.Gray
+                                )
+                            }
+                            androidx.compose.material3.IconButton(
+                                onClick = {
+                                    autoReconnect = false
+                                    prefs.edit().putBoolean("AUTO_RECONNECT", false).apply()
+                                    stopPassengerConnection(context)
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.WifiTetheringOff,
+                                    contentDescription = "Desconectar",
+                                    tint = Color.Gray
+                                )
+                            }
+                        }
                     }
                 }
                 "CONNECT" -> {
-                    var offScreenBehavior by remember {
-                        mutableStateOf(prefs.getString("OFF_SCREEN_BEHAVIOR", "LOCK") ?: "LOCK")
-                    }
-
                     // Estados de suporte ao Bluetooth
                     var isBluetoothConnecting by remember { mutableStateOf(false) }
                     var bluetoothError by remember { mutableStateOf<String?>(null) }
-                    var hasBluetoothPermission by remember { mutableStateOf(com.example.utils.hasBluetoothPermissions(context)) }
+                    var hasBluetoothPermission by remember { mutableStateOf(com.alexlopes.pixdrive.utils.hasBluetoothPermissions(context)) }
                     var showDevicePickerDialog by remember { mutableStateOf(false) }
+                    var showIpKeypad by remember { mutableStateOf(false) }
                     var pairedDevices by remember { mutableStateOf<List<android.bluetooth.BluetoothDevice>>(emptyList()) }
 
                     val bluetoothPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -897,7 +1045,7 @@ fun PassengerScreen() {
                     ) { results ->
                         hasBluetoothPermission = results.values.all { it }
                         if (hasBluetoothPermission) {
-                            pairedDevices = com.example.network.BluetoothClientHelper.getPairedDevices(context)
+                            pairedDevices = com.alexlopes.pixdrive.network.BluetoothClientHelper.getPairedDevices(context)
                             showDevicePickerDialog = true
                         }
                     }
@@ -933,12 +1081,12 @@ fun PassengerScreen() {
                                                             isBluetoothConnecting = true
                                                             bluetoothError = null
                                                             scope.launch {
-                                                                com.example.network.BluetoothClientHelper.connectToDriver(
+                                                                com.alexlopes.pixdrive.network.BluetoothClientHelper.connectToDriver(
                                                                     context = context,
                                                                     device = device,
                                                                     onConfigReceived = { ssid, pass, ip ->
                                                                         bluetoothError = "Conectando ao Wi-Fi: $ssid..."
-                                                                        com.example.utils.WifiConnector.connectToWifi(
+                                                                        com.alexlopes.pixdrive.utils.WifiConnector.connectToWifi(
                                                                             context = context,
                                                                             ssid = ssid,
                                                                             pass = pass,
@@ -947,8 +1095,19 @@ fun PassengerScreen() {
                                                                                 bluetoothError = null
                                                                                 serverIp = ip
                                                                                 prefs.edit().putString("LAST_IP", ip).apply()
-                                                                                autoReconnect = true
-                                                                                connectionTrigger++
+                                                                                autoReconnect = false
+                                                                                prefs.edit()
+                                                                                    .putBoolean("AUTO_RECONNECT", false)
+                                                                                    .apply()
+                                                                                val currentPort = prefs
+                                                                                    .getString("PORT", "8080")
+                                                                                    ?.toIntOrNull() ?: 8080
+                                                                                startPassengerConnection(
+                                                                                    context,
+                                                                                    ip.trim(),
+                                                                                    currentPort,
+                                                                                    autoReconnect = false
+                                                                                )
                                                                             },
                                                                             onError = { err ->
                                                                                 isBluetoothConnecting = false
@@ -988,229 +1147,153 @@ fun PassengerScreen() {
                         )
                     }
 
-                    val settingsContent = @Composable {
-                        Text(
-                            "Modo Passageiro",
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = Color.White
-                        )
-                        OutlinedTextField(
-                            value = serverIp,
-                            onValueChange = { 
-                                serverIp = it 
+                    if (showIpKeypad) {
+                        IpKeypadDialog(
+                            initialValue = serverIp,
+                            onDismiss = { showIpKeypad = false },
+                            onConfirm = { newIp ->
+                                serverIp = newIp
+                                showIpKeypad = false
                                 if (autoReconnect) {
                                     autoReconnect = false
                                     prefs.edit().putBoolean("AUTO_RECONNECT", false).apply()
+                                    stopPassengerConnection(context)
                                 }
-                            },
-                            label = { Text("IP do Motorista", color = Color.Gray) },
-                            textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
-                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = Color.DarkGray,
-                                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                                unfocusedLabelColor = Color.Gray
-                            ),
-                            modifier = Modifier.fillMaxWidth()
+                            }
                         )
-                        
-                        androidx.compose.foundation.layout.Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                autoReconnect = !autoReconnect
-                                prefs.edit().putBoolean("AUTO_RECONNECT", autoReconnect).apply()
-                            }.padding(vertical = 4.dp)
-                        ) {
-                            androidx.compose.material3.Switch(
-                                checked = autoReconnect,
-                                onCheckedChange = { 
-                                    autoReconnect = it 
-                                    prefs.edit().putBoolean("AUTO_RECONNECT", it).apply()
-                                },
-                                colors = androidx.compose.material3.SwitchDefaults.colors(
-                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
-                                    uncheckedThumbColor = Color.Gray,
-                                    uncheckedTrackColor = Color.DarkGray
-                                )
-                            )
-                            Text(
-                                text = "Auto-Conectar (buscar motorista)",
-                                color = Color.White,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        
+                    }
+
+                    val settingsContent = @Composable {
                         Text(
-                            text = "Ao apagar a tela:",
-                            color = Color.LightGray,
-                            style = MaterialTheme.typography.titleSmall
+                            "Conectar ao motorista",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White
                         )
-                        
-                        androidx.compose.foundation.layout.Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            androidx.compose.material3.Card(
-                                onClick = {
-                                    offScreenBehavior = "LOCK"
-                                    prefs.edit().putString("OFF_SCREEN_BEHAVIOR", "LOCK").apply()
-                                },
-                                modifier = Modifier.weight(1f).height(68.dp),
-                                colors = androidx.compose.material3.CardDefaults.cardColors(
-                                    containerColor = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
+                        Text(
+                            if (autoReconnect) {
+                                "Procurando o celular do motorista…"
+                            } else {
+                                "Conexão automática desativada"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = serverIp,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("IP do Motorista", color = Color.Gray) },
+                                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White),
+                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = Color.DarkGray,
+                                    focusedLabelColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedLabelColor = Color.Gray
                                 ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    width = 1.dp,
-                                    color = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primary else Color.Transparent
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PhonelinkErase,
-                                        contentDescription = null,
-                                        tint = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.primary else Color.Gray,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        "Bloquear Tela",
-                                        color = if (offScreenBehavior == "LOCK") MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                            
-                            androidx.compose.material3.Card(
-                                onClick = {
-                                    offScreenBehavior = "MINIMIZE"
-                                    prefs.edit().putString("OFF_SCREEN_BEHAVIOR", "MINIMIZE").apply()
-                                },
-                                modifier = Modifier.weight(1f).height(68.dp),
-                                colors = androidx.compose.material3.CardDefaults.cardColors(
-                                    containerColor = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2C)
-                                ),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    width = 1.dp,
-                                    color = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primary else Color.Transparent
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.fillMaxSize(),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Home,
-                                        contentDescription = null,
-                                        tint = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.primary else Color.Gray,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        "Minimizar App",
-                                        color = if (offScreenBehavior == "MINIMIZE") MaterialTheme.colorScheme.onPrimaryContainer else Color.White,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { showIpKeypad = true }
+                            )
                         }
                     }
 
                     val actionsContent = @Composable {
                         if (isDiscovering) {
-                            val infiniteTransition = rememberInfiniteTransition()
-                            val scale by infiniteTransition.animateFloat(
-                                initialValue = 0.5f,
-                                targetValue = 2.0f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
-                                    repeatMode = RepeatMode.Restart
-                                ),
-                                label = "radar_scale"
-                            )
-                            val alpha by infiniteTransition.animateFloat(
-                                initialValue = 1f,
-                                targetValue = 0f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing),
-                                    repeatMode = RepeatMode.Restart
-                                ),
-                                label = "radar_alpha"
-                            )
-
-                            Box(
-                                modifier = Modifier.size(80.dp),
-                                contentAlignment = Alignment.Center
+                            androidx.compose.foundation.layout.Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                                androidx.compose.material3.CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
                                 )
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .graphicsLayer {
-                                            scaleX = scale
-                                            scaleY = scale
-                                            this.alpha = alpha
-                                        }
-                                        .border(2.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape)
+                                Text(
+                                    "Buscando motorista...",
+                                    color = Color.LightGray,
+                                    style = MaterialTheme.typography.bodySmall
                                 )
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Buscando motorista...", color = Color.LightGray)
-                        } else {
+                        }
+
+                        androidx.compose.foundation.layout.Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Button(
                                 onClick = {
-                                    prefs.edit().putString("LAST_IP", serverIp).apply()
-                                    autoReconnect = true
-                                    connectionTrigger++
+                                    val manualIp = serverIp.trim()
+                                    prefs.edit().putString("LAST_IP", manualIp).apply()
+                                    autoReconnect = false
+                                    prefs.edit().putBoolean("AUTO_RECONNECT", false).apply()
+                                    com.alexlopes.pixdrive.network.UdpDiscovery.stopClientDiscovery()
+                                    val currentPort = prefs
+                                        .getString("PORT", "8080")
+                                        ?.toIntOrNull() ?: 8080
+                                    startPassengerConnection(
+                                        context,
+                                        manualIp,
+                                        currentPort,
+                                        autoReconnect = false
+                                    )
                                 },
-                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                                enabled = serverIp.trim().let { it.isNotEmpty() && it != "192.168." },
+                                modifier = Modifier.weight(1f).height(44.dp)
                             ) {
-                                Text("Conectar Manual", style = MaterialTheme.typography.bodyMedium)
+                                Text("Conectar", style = MaterialTheme.typography.bodyMedium)
                             }
                             
                             androidx.compose.material3.OutlinedButton(
                                 onClick = {
-                                    prefs.edit().putString("LAST_IP", "").apply()
-                                    autoReconnect = true
-                                    connectionTrigger++
-                                },
-                                modifier = Modifier.fillMaxWidth().height(50.dp)
-                            ) {
-                                Text("Auto Conectar", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                            }
-
-                            // NOVO BOTÃO: CONECTAR VIA BLUETOOTH
-                            Button(
-                                onClick = {
-                                    if (hasBluetoothPermission) {
-                                        pairedDevices = com.example.network.BluetoothClientHelper.getPairedDevices(context)
-                                        showDevicePickerDialog = true
+                                    if (autoReconnect) {
+                                        autoReconnect = false
+                                        prefs.edit()
+                                            .putBoolean("AUTO_RECONNECT", false)
+                                            .apply()
+                                        stopPassengerConnection(context)
                                     } else {
-                                        bluetoothPermissionLauncher.launch(com.example.utils.bluetoothPermissionsList())
+                                        prefs.edit()
+                                            .putBoolean("AUTO_RECONNECT", true)
+                                            .apply()
+                                        autoReconnect = true
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth().height(50.dp),
+                                modifier = Modifier.weight(1f).height(44.dp)
+                            ) {
+                                Text(
+                                    if (autoReconnect) "Desativar Auto" else "Auto Conectar",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        Button(
+                                onClick = {
+                                    if (hasBluetoothPermission) {
+                                        pairedDevices = com.alexlopes.pixdrive.network.BluetoothClientHelper.getPairedDevices(context)
+                                        showDevicePickerDialog = true
+                                    } else {
+                                        bluetoothPermissionLauncher.launch(com.alexlopes.pixdrive.utils.bluetoothPermissionsList())
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(44.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.tertiary
                                 )
                             ) {
-                                Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Conectar via Bluetooth", style = MaterialTheme.typography.bodyMedium)
                             }
 
-                            // Feedback visual de conexão Bluetooth
-                            if (isBluetoothConnecting || bluetoothError != null) {
+                        if (isBluetoothConnecting || bluetoothError != null) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 androidx.compose.material3.Card(
                                     modifier = Modifier.fillMaxWidth(),
@@ -1238,94 +1321,34 @@ fun PassengerScreen() {
                                         )
                                     }
                                 }
-                            }
-                            
-                            if (offScreenBehavior == "LOCK") {
-                                if (!isAdminActive) {
-                                    androidx.compose.material3.OutlinedButton(
-                                        onClick = {
-                                            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                                                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
-                                                putExtra(
-                                                    DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                                                    "Necessário para apagar e bloquear a tela remotamente."
-                                                )
-                                            }
-                                            adminLauncher.launch(intent)
-                                        },
-                                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                            contentColor = MaterialTheme.colorScheme.secondary
-                                        )
-                                    ) {
-                                        Text("Permitir Bloqueio (Admin)", style = MaterialTheme.typography.bodyMedium)
-                                    }
-                                } else {
-                                    Text(
-                                        "Admin Ativado",
-                                        color = Color.Green,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.padding(top = 8.dp)
-                                    )
-                                }
-                            }
                         }
                     }
 
                     androidx.compose.material3.Surface(
                         modifier = Modifier
                             .padding(16.dp)
-                            .fillMaxWidth(0.85f)
+                            .widthIn(max = 400.dp)
+                            .fillMaxWidth()
                             .wrapContentHeight(),
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = Color(0xFF1E1E1E),
                         tonalElevation = 8.dp
                     ) {
                         Column(
                             modifier = Modifier
-                                .padding(24.dp)
+                                .padding(horizontal = 18.dp, vertical = 16.dp)
                                 .verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (useHorizontalLayout) {
-                                androidx.compose.foundation.layout.Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Left Column - Inputs and Settings
-                                    Column(
-                                        modifier = Modifier.weight(1.1f),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        settingsContent()
-                                    }
-                                    
-                                    // Right Column - Actions
-                                    Column(
-                                        modifier = Modifier.weight(0.9f),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        actionsContent()
-                                    }
-                                }
-                            } else {
-                                // Vertical layout: portrait or narrow horizontal
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    settingsContent()
-                                }
-                                Spacer(modifier = Modifier.height(24.dp))
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    actionsContent()
-                                }
+                            settingsContent()
+                            actionsContent()
+                            androidx.compose.material3.IconButton(onClick = onSettings) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Configurações",
+                                    tint = Color.Gray
+                                )
                             }
                         }
                     }
@@ -1333,17 +1356,6 @@ fun PassengerScreen() {
             }
         }
         
-        if (isConnected && receivedImage == null && qrCodeText == null) {
-            androidx.compose.material3.IconButton(
-                onClick = { 
-                    autoReconnect = false // <-- Adicione isso! Impede o laço while de voltar
-                    TcpClient.disconnect() 
-                },
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
-            ) {
-                Icon(Icons.Default.WifiTetheringOff, contentDescription = "Desconectar", tint = Color.Gray)
-            }
-        }
     }
 }
 
